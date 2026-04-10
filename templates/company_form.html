@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2>{% if empresa %}Editar Empresa{% else %}Nueva Empresa{% endif %}</h2>
+    <form action="{% if empresa %}/companies/{{ empresa.id }}/edit{% else %}/companies/new{% endif %}" method="post">
+        <label for="cuit">CUIT</label>
+        <input type="text" id="cuit" name="cuit" value="{{ empresa.cuit if empresa else '' }}" required />
+
+        <label for="razon_social">Razón social</label>
+        <input type="text" id="razon_social" name="razon_social" value="{{ empresa.razon_social if empresa else '' }}" required />
+
+        <label for="actividad">Actividad</label>
+        <input type="text" id="actividad" name="actividad" value="{{ empresa.actividad if empresa else '' }}" />
+
+        <label for="anio_fundacion">Año de fundación</label>
+        <input type="number" id="anio_fundacion" name="anio_fundacion" value="{{ empresa.anio_fundacion if empresa else '' }}" />
+
+        <label for="descripcion">Descripción</label>
+        <textarea id="descripcion" name="descripcion" rows="4">{{ empresa.descripcion if empresa else '' }}</textarea>
+
+        <button type="submit">Guardar Empresa</button>
+    </form>
+</div>
+{% endblock %}

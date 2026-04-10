@@ -1,0 +1,464 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="no-pdf" style="margin-bottom: 15px;">
+    <button onclick="exportToPDF('report-container', 'Analisis_Empresa_{{ selected_company.razon_social if selected_company else 'Nueva' }}')">Exportar Reporte a PDF</button>
+</div>
+
+<div id="report-container">
+<div class="card">
+    <h2>Captura única de empresa y EECC</h2>
+    {% if message %}
+    <p><strong>{{ message }}</strong></p>
+    {% endif %}
+
+    <form method="get" id="selectCompanyForm" class="no-pdf" style="margin-bottom: 20px; display:flex; gap:16px; flex-wrap: wrap; align-items:flex-end;">
+        <div style="flex:1; min-width:220px;">
+            <label for="company_id_select">Seleccionar empresa existente</label>
+            <select id="company_id_select" name="company_id" onchange="this.form.submit()">
+                <option value="">Nueva empresa</option>
+                {% for empresa in companies %}
+                <option value="{{ empresa.id }}" {% if selected_company and selected_company.id == empresa.id %}selected{% endif %}>
+                    {{ empresa.razon_social }} - {{ empresa.cuit }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="flex:1; min-width:160px;">
+            <label for="selected_year">Año balance</label>
+            <input type="number" id="selected_year" name="selected_year" value="{{ selected_year }}" onchange="this.form.submit()" />
+        </div>
+        <div style="flex:1; min-width:160px;">
+            <label for="comparativo_year">Año comparativo</label>
+            <input type="number" id="comparativo_year" name="comparativo_year" value="{{ comparativo_year }}" onchange="this.form.submit()" />
+        </div>
+        <div>
+            <button type="submit">Cargar</button>
+        </div>
+    </form>
+
+    {% if selected_company %}
+    <div class="card" style="background:#f1f7ff;">
+        <h3>Empresa seleccionada</h3>
+        <p>
+            <strong>{{ selected_company.razon_social }}</strong> - {{ selected_company.cuit }}<br />
+            Actividad: {{ selected_company.actividad or '-' }}<br />
+            Año fundación: {{ selected_company.anio_fundacion or '-' }}<br />
+            Descripción: {{ selected_company.descripcion or '-' }}
+        </p>
+    </div>
+    {% endif %}
+
+    {% if selected_company and previous_balances %}
+    <div class="card">
+        <h3>Balances anteriores</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Año</th>
+                    <th>PN</th>
+                    <th>Capital de trabajo</th>
+                    <th>EBITDA</th>
+                    <th>Resultado neto</th>
+                    <th>Ventas</th>
+                    <th>Res. Operativo</th>
+                    <th>Activo corriente</th>
+                    <th>Pasivo corriente</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for balance in previous_balances %}
+                <tr>
+                    <td>{{ balance.anio }}</td>
+                    <td>{{ ((balance.activo_corriente + balance.activo_no_corriente) - (balance.pasivo_corriente + balance.pasivo_no_corriente)) | format_es }}</td>
+                    <td>{{ (balance.activo_corriente - balance.pasivo_corriente) | format_es }}</td>
+                    <td>{{ balance.ebitda | format_es }}</td>
+                    <td>{{ balance.resultado_neto | format_es }}</td>
+                    <td>{{ balance.ventas | format_es }}</td>
+                    <td>{{ balance.resultado_operativo | format_es }}</td>
+                    <td>{{ balance.activo_corriente | format_es }}</td>
+                    <td>{{ balance.pasivo_corriente | format_es }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <form method="post" class="no-pdf">
+        <input type="hidden" name="company_id" value="{{ selected_company.id if selected_company else '' }}" />
+        <input type="hidden" name="selected_year" value="{{ selected_year }}" />
+        <input type="hidden" name="comparativo_year" value="{{ comparativo_year }}" />
+
+        <h3>Datos de la empresa</h3>
+        <label for="cuit">CUIT</label>
+        <input type="text" id="cuit" name="cuit" value="{{ selected_company.cuit if selected_company else '' }}" required />
+
+        <label for="razon_social">Razón social</label>
+        <input type="text" id="razon_social" name="razon_social" value="{{ selected_company.razon_social if selected_company else '' }}" required />
+
+        <label for="actividad">Actividad</label>
+        <input type="text" id="actividad" name="actividad" value="{{ selected_company.actividad if selected_company else '' }}" />
+
+        <label for="anio_fundacion">Año de fundación</label>
+        <input type="number" id="anio_fundacion" name="anio_fundacion" value="{{ selected_company.anio_fundacion if selected_company else '' }}" />
+
+        <label for="descripcion">Descripción</label>
+        <textarea id="descripcion" name="descripcion" rows="3">{{ selected_company.descripcion if selected_company else '' }}</textarea>
+
+        <h3>Información contable</h3>
+        <div style="display:flex; gap:24px; flex-wrap: wrap;">
+            <div style="flex:1; min-width:260px;">
+                <h4>Año {{ selected_year }}</h4>
+                <label for="actual_disponibilidades">Disponibilidades</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_disponibilidades" name="actual_disponibilidades" value="{{ actual_balance.disponibilidades if actual_balance else '0.0' }}" />
+
+                <label for="actual_activo_corriente">Activo corriente</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_activo_corriente" name="actual_activo_corriente" value="{{ actual_balance.activo_corriente if actual_balance else '0.0' }}" />
+
+                <label for="actual_activo_no_corriente">Activo no corriente</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_activo_no_corriente" name="actual_activo_no_corriente" value="{{ actual_balance.activo_no_corriente if actual_balance else '0.0' }}" />
+
+                <label for="actual_activo_total">Activo total</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_activo_total" value="{{ ((actual_balance.activo_corriente or 0.0) + (actual_balance.activo_no_corriente or 0.0)) if actual_balance else 0.0 }}" readonly />
+
+                <label for="actual_pasivo_corriente">Pasivo corriente</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_pasivo_corriente" name="actual_pasivo_corriente" value="{{ actual_balance.pasivo_corriente if actual_balance else '0.0' }}" />
+
+                <label for="actual_pasivo_no_corriente">Pasivo no corriente</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_pasivo_no_corriente" name="actual_pasivo_no_corriente" value="{{ actual_balance.pasivo_no_corriente if actual_balance else '0.0' }}" />
+
+                <label for="actual_pasivo_total">Pasivo total</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_pasivo_total" value="{{ ((actual_balance.pasivo_corriente or 0.0) + (actual_balance.pasivo_no_corriente or 0.0)) if actual_balance else 0.0 }}" readonly />
+
+                <label for="actual_patrimonio_neto">Patrimonio neto</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_patrimonio_neto" value="{{ (((actual_balance.activo_corriente or 0.0) + (actual_balance.activo_no_corriente or 0.0)) - ((actual_balance.pasivo_corriente or 0.0) + (actual_balance.pasivo_no_corriente or 0.0))) if actual_balance else 0.0 }}" readonly />
+
+                <label for="actual_deuda_financiera">Deuda financiera</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_deuda_financiera" name="actual_deuda_financiera" value="{{ actual_balance.deuda_financiera if actual_balance else '0.0' }}" />
+
+                <label for="actual_ventas">Ventas</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_ventas" name="actual_ventas" value="{{ actual_balance.ventas if actual_balance else '0.0' }}" />
+
+                <label for="actual_resultado_operativo">Resultado operativo</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_resultado_operativo" name="actual_resultado_operativo" value="{{ actual_balance.resultado_operativo if actual_balance else '0.0' }}" />
+
+                <label for="actual_ebitda">EBITDA</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_ebitda" name="actual_ebitda" value="{{ actual_balance.ebitda if actual_balance else '0.0' }}" />
+
+                <label for="actual_flujo_caja_operativo">Flujo de Caja Operativo</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_flujo_caja_operativo" name="actual_flujo_caja_operativo" value="{{ actual_balance.flujo_caja_operativo if actual_balance else '0.0' }}" />
+
+                <label for="actual_variacion_capital_trabajo">Variación Capital de Trabajo</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_variacion_capital_trabajo" name="actual_variacion_capital_trabajo" value="{{ actual_balance.variacion_capital_trabajo if actual_balance else '0.0' }}" />
+
+                <label for="actual_flujo_caja_generado">Flujo de Caja Generado</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_flujo_caja_generado" name="actual_flujo_caja_generado" value="{{ (actual_balance.flujo_caja_operativo + actual_balance.variacion_capital_trabajo) if actual_balance else '0.0' }}" readonly />
+
+                <label for="actual_capex">Capex</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_capex" name="actual_capex" value="{{ actual_balance.capex if actual_balance else '0.0' }}" />
+
+                <label for="actual_dividendos">Dividendos</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_dividendos" name="actual_dividendos" value="{{ actual_balance.dividendos if actual_balance else '0.0' }}" />
+
+                <label for="actual_flujo_caja_libre">Flujo de Caja Libre</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_flujo_caja_libre" name="actual_flujo_caja_libre" value="{{ (actual_balance.flujo_caja_operativo - actual_balance.capex - actual_balance.dividendos) if actual_balance else '0.0' }}" readonly />
+
+                <label for="actual_resultado_neto">Resultado neto</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_resultado_neto" name="actual_resultado_neto" value="{{ actual_balance.resultado_neto if actual_balance else '0.0' }}" />
+            </div>
+
+            <div style="flex:1; min-width:260px;">
+                <h4>Año {{ comparativo_year }}</h4>
+                <label for="comparativo_disponibilidades">Disponibilidades</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_disponibilidades" name="comparativo_disponibilidades" value="{{ comparativo_balance.disponibilidades if comparativo_balance else '0.0' }}" />
+
+                <label for="comparativo_activo_corriente">Activo corriente</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_activo_corriente" name="comparativo_activo_corriente" value="{{ comparativo_balance.activo_corriente if comparativo_balance else '0.0' }}" />
+
+                <label for="comparativo_activo_no_corriente">Activo no corriente</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_activo_no_corriente" name="comparativo_activo_no_corriente" value="{{ comparativo_balance.activo_no_corriente if comparativo_balance else '0.0' }}" />
+
+                <label for="comparativo_activo_total">Activo total</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_activo_total" value="{{ ((comparativo_balance.activo_corriente or 0.0) + (comparativo_balance.activo_no_corriente or 0.0)) if comparativo_balance else 0.0 }}" readonly />
+
+                <label for="comparativo_pasivo_corriente">Pasivo corriente</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_pasivo_corriente" name="comparativo_pasivo_corriente" value="{{ comparativo_balance.pasivo_corriente if comparativo_balance else '0.0' }}" />
+
+                <label for="comparativo_pasivo_no_corriente">Pasivo no corriente</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_pasivo_no_corriente" name="comparativo_pasivo_no_corriente" value="{{ comparativo_balance.pasivo_no_corriente if comparativo_balance else '0.0' }}" />
+
+                <label for="comparativo_pasivo_total">Pasivo total</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_pasivo_total" value="{{ ((comparativo_balance.pasivo_corriente or 0.0) + (comparativo_balance.pasivo_no_corriente or 0.0)) if comparativo_balance else 0.0 }}" readonly />
+
+                <label for="comparativo_patrimonio_neto">Patrimonio neto</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_patrimonio_neto" value="{{ (((comparativo_balance.activo_corriente or 0.0) + (comparativo_balance.activo_no_corriente or 0.0)) - ((comparativo_balance.pasivo_corriente or 0.0) + (comparativo_balance.pasivo_no_corriente or 0.0))) if comparativo_balance else 0.0 }}" readonly />
+
+                <label for="comparativo_deuda_financiera">Deuda financiera</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_deuda_financiera" name="comparativo_deuda_financiera" value="{{ comparativo_balance.deuda_financiera if comparativo_balance else '0.0' }}" />
+
+                <label for="comparativo_ventas">Ventas</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_ventas" name="comparativo_ventas" value="{{ comparativo_balance.ventas if comparativo_balance else '0.0' }}" />
+
+                <label for="comparativo_resultado_operativo">Resultado operativo</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_resultado_operativo" name="comparativo_resultado_operativo" value="{{ comparativo_balance.resultado_operativo if comparativo_balance else '0.0' }}" />
+
+                <label for="comparativo_ebitda">EBITDA</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_ebitda" name="comparativo_ebitda" value="{{ comparativo_balance.ebitda if comparativo_balance else '0.0' }}" />
+
+                <label for="comparativo_flujo_caja_operativo">Flujo de Caja Operativo</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_flujo_caja_operativo" name="comparativo_flujo_caja_operativo" value="{{ comparativo_balance.flujo_caja_operativo if comparativo_balance else '0.0' }}" />
+
+                <label for="comparativo_variacion_capital_trabajo">Variación Capital de Trabajo</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_variacion_capital_trabajo" name="comparativo_variacion_capital_trabajo" value="{{ comparativo_balance.variacion_capital_trabajo if comparativo_balance else '0.0' }}" />
+
+                <label for="comparativo_flujo_caja_generado">Flujo de Caja Generado</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_flujo_caja_generado" name="comparativo_flujo_caja_generado" value="{{ (comparativo_balance.flujo_caja_operativo + comparativo_balance.variacion_capital_trabajo) if comparativo_balance else '0.0' }}" readonly />
+
+                <label for="comparativo_capex">Capex</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_capex" name="comparativo_capex" value="{{ comparativo_balance.capex if comparativo_balance else '0.0' }}" />
+
+                <label for="comparativo_dividendos">Dividendos</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_dividendos" name="comparativo_dividendos" value="{{ comparativo_balance.dividendos if comparativo_balance else '0.0' }}" />
+
+                <label for="comparativo_flujo_caja_libre">Flujo de Caja Libre</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_flujo_caja_libre" name="comparativo_flujo_caja_libre" value="{{ (comparativo_balance.flujo_caja_operativo - comparativo_balance.capex - comparativo_balance.dividendos) if comparativo_balance else '0.0' }}" readonly />
+
+                <label for="comparativo_resultado_neto">Resultado neto</label>
+                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_resultado_neto" name="comparativo_resultado_neto" value="{{ comparativo_balance.resultado_neto if comparativo_balance else '0.0' }}" />
+            </div>
+        </div>
+
+        <button type="submit">Guardar información</button>
+    </form>
+</div>
+
+<div class="card">
+    <h3>Ratios en vivo</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Ratio</th>
+                <th>{{ selected_year }}</th>
+                <th>{{ comparativo_year }}</th>
+                <th>Diferencia</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Current Ratio</td>
+                <td id="live_current_actual">0.00</td>
+                <td id="live_current_comparativo">0.00</td>
+                <td id="live_current_diff">0.00</td>
+            </tr>
+            <tr>
+                <td>Debt Ratio</td>
+                <td id="live_debt_actual">0.00</td>
+                <td id="live_debt_comparativo">0.00</td>
+                <td id="live_debt_diff">0.00</td>
+            </tr>
+            <tr>
+                <td>EBITDA Margin</td>
+                <td id="live_ebitda_actual">0.00</td>
+                <td id="live_ebitda_comparativo">0.00</td>
+                <td id="live_ebitda_diff">0.00</td>
+            </tr>
+            <tr>
+                <td>Return on Assets</td>
+                <td id="live_roa_actual">0.00</td>
+                <td id="live_roa_comparativo">0.00</td>
+                <td id="live_roa_diff">0.00</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h3>Métricas por segmento</h3>
+    {% if actual_metrics or comparativo_metrics %}
+        {% set display_metrics = actual_metrics if actual_metrics else comparativo_metrics %}
+        {% for segment, actual_segment in display_metrics.items() %}
+            <h4>{{ segment | replace('_', ' ') | title }}</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Métrica</th>
+                        <th>{{ selected_year }}</th>
+                        <th>{{ comparativo_year }}</th>
+                        <th>Diferencia</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for name, actual_value in actual_segment.items() %}
+                        {% set comparativo_segment = comparativo_metrics.get(segment, {}) %}
+                        {% set comparativo_value = comparativo_segment.get(name, 0) %}
+                        {% set difference = actual_value - comparativo_value %}
+                        <tr>
+                            <td>{{ name }}</td>
+                            <td>{{ actual_value | format_es(2) }}</td>
+                            <td>{{ comparativo_value | format_es(2) }}</td>
+                            <td>{{ difference | format_es(2) }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endfor %}
+    {% else %}
+        <p>Llena el balance para ver métricas segmentadas de solvencia, liquidez y flujo de caja.</p>
+    {% endif %}
+</div>
+</div>
+
+<script>
+function parseVal(id) {
+    const field = document.getElementById(id);
+    if (!field) return 0.0;
+    const raw = String(field.value).trim();
+    if (raw === '') {
+        return 0.0;
+    }
+    const sanitized = raw.replace(/\./g, '').replace(/,/, '.').replace(/[^0-9.-]/g, '');
+    const value = parseFloat(sanitized);
+    return Number.isFinite(value) ? value : 0.0;
+}
+
+function format(val) {
+    return Number.isFinite(val) ? val.toFixed(2) : '0.00';
+}
+
+function formatNumber(val) {
+    return Number.isFinite(val)
+        ? val.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '0,00';
+}
+
+function unformatNumber(value) {
+    return String(value).replace(/\./g, '').replace(/,/, '.');
+}
+
+function safeDivide(num, den) {
+    return Math.abs(den) < 1e-9 ? 0.0 : num / den;
+}
+
+function computeRatioData(prefix) {
+    const activoCorriente = parseVal(prefix + 'activo_corriente');
+    const activoNoCorriente = parseVal(prefix + 'activo_no_corriente');
+    const pasivoCorriente = Math.max(parseVal(prefix + 'pasivo_corriente'), 1.0);
+    const deudaFinanciera = parseVal(prefix + 'deuda_financiera');
+    const ventas = Math.max(parseVal(prefix + 'ventas'), 1.0);
+    const ebitda = parseVal(prefix + 'ebitda');
+    const resultadNetoTotal = parseVal(prefix + 'resultado_neto');
+    const assetSum = activoCorriente + activoNoCorriente;
+    const totalActivo = Math.max(assetSum, 1.0);
+    const flujoOperativo = parseVal(prefix + 'flujo_caja_operativo');
+    const variacionCT = parseVal(prefix + 'variacion_capital_trabajo');
+    const capex = parseVal(prefix + 'capex');
+    const dividendos = parseVal(prefix + 'dividendos');
+    const flujoGenerado = flujoOperativo + variacionCT;
+    const flujoLibre = flujoOperativo - capex - dividendos;
+
+    const capitalTrabajo = activoCorriente - pasivoCorriente;
+    const totalPasivo = pasivoCorriente + parseVal(prefix + 'pasivo_no_corriente');
+    const patrimonioNeto = assetSum - totalPasivo;
+
+    const activeTotalField = document.getElementById(prefix + 'activo_total');
+    const liabilityTotalField = document.getElementById(prefix + 'pasivo_total');
+    const equityField = document.getElementById(prefix + 'patrimonio_neto');
+    if (activeTotalField) {
+        activeTotalField.value = assetSum.toFixed(2);
+    }
+    if (liabilityTotalField) {
+        liabilityTotalField.value = totalPasivo.toFixed(2);
+    }
+    if (equityField) {
+        equityField.value = patrimonioNeto.toFixed(2);
+    }
+
+    const ratios = {
+        current_ratio: safeDivide(activoCorriente, pasivoCorriente),
+        debt_ratio: safeDivide(deudaFinanciera, totalActivo),
+        ebitda_margin: safeDivide(ebitda, ventas),
+        return_on_assets: safeDivide(resultadNetoTotal, totalActivo),
+        capital_trabajo: capitalTrabajo,
+        flujo_caja_generado_ventas: safeDivide(flujoGenerado, ventas),
+        flujo_caja_libre_ventas: safeDivide(flujoLibre, ventas),
+    };
+
+    const generatedField = document.getElementById(prefix + 'flujo_caja_generado');
+    const freeField = document.getElementById(prefix + 'flujo_caja_libre');
+    if (generatedField) {
+        generatedField.value = flujoGenerado.toFixed(2);
+    }
+    if (freeField) {
+        freeField.value = flujoLibre.toFixed(2);
+    }
+
+    return ratios;
+}
+
+function updateLiveResults() {
+    const actual = computeRatioData('actual_');
+    const comparativo = computeRatioData('comparativo_');
+    const map = [
+        ['current_ratio', 'live_current_actual', 'live_current_comparativo', 'live_current_diff'],
+        ['debt_ratio', 'live_debt_actual', 'live_debt_comparativo', 'live_debt_diff'],
+        ['ebitda_margin', 'live_ebitda_actual', 'live_ebitda_comparativo', 'live_ebitda_diff'],
+        ['return_on_assets', 'live_roa_actual', 'live_roa_comparativo', 'live_roa_diff'],
+    ];
+
+    map.forEach(([key, actualId, comparativoId, diffId]) => {
+        const a = actual[key];
+        const b = comparativo[key];
+        document.getElementById(actualId).textContent = format(a);
+        document.getElementById(comparativoId).textContent = format(b);
+        document.getElementById(diffId).textContent = format(a - b);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('input.numeric').forEach((element) => {
+        element.addEventListener('input', updateLiveResults);
+        element.addEventListener('blur', () => {
+            element.value = formatNumber(parseVal(element.id));
+        });
+        element.addEventListener('focus', () => {
+            element.value = unformatNumber(element.value);
+        });
+    });
+
+    document.querySelectorAll('input.numeric').forEach((element) => {
+        element.value = formatNumber(parseVal(element.id));
+    });
+
+    updateLiveResults();
+});
+
+const inputIds = [
+    'actual_activo_corriente',
+    'actual_activo_no_corriente',
+    'actual_pasivo_corriente',
+    'actual_pasivo_no_corriente',
+    'actual_deuda_financiera',
+    'actual_ventas',
+    'actual_ebitda',
+    'actual_resultado_neto',
+    'comparativo_activo_corriente',
+    'comparativo_activo_no_corriente',
+    'comparativo_pasivo_corriente',
+    'comparativo_pasivo_no_corriente',
+    'comparativo_deuda_financiera',
+    'comparativo_ventas',
+    'comparativo_ebitda',
+    'comparativo_resultado_neto',
+];
+
+inputIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+        el.addEventListener('input', updateLiveResults);
+    }
+});
+
+window.addEventListener('load', updateLiveResults);
+</script>
+{% endblock %}

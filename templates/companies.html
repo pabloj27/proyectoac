@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2>Empresas Cargadas</h2>
+    {% if companies %}
+        {% for empresa in companies %}
+        <div style="margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #dee2e6;">
+            <h3>{{ empresa.razon_social }} <small>({{ empresa.cuit }})</small></h3>
+            <p>
+                Actividad: {{ empresa.actividad or '-' }}<br />
+                Año fundación: {{ empresa.anio_fundacion or '-' }}<br />
+                Descripción: {{ empresa.descripcion or '-' }}<br />
+                Balances cargados: {{ empresa.balances | length }}
+            </p>
+
+            <p>
+                <a href="/companies/{{ empresa.id }}/edit">Editar empresa</a>
+                |
+                <form action="/companies/{{ empresa.id }}/delete" method="post" style="display:inline;">
+                    <button type="submit" style="background:none;border:none;color:#003366;cursor:pointer;padding:0;">Eliminar empresa</button>
+                </form>
+            </p>
+
+            {% if empresa.balances %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Año</th>
+                        <th>Disponibilidades</th>
+                        <th>Activo corriente</th>
+                        <th>Activo no corriente</th>
+                        <th>Pasivo corriente</th>
+                        <th>Pasivo no corriente</th>
+                        <th>Ventas</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for balance in empresa.balances %}
+                    <tr>
+                        <td>{{ balance.anio }}</td>
+                        <td>{{ balance.disponibilidades }}</td>
+                        <td>{{ balance.activo_corriente }}</td>
+                        <td>{{ balance.activo_no_corriente }}</td>
+                        <td>{{ balance.pasivo_corriente }}</td>
+                        <td>{{ balance.pasivo_no_corriente }}</td>
+                        <td>{{ balance.ventas }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>No hay balances cargados para esta empresa.</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% else %}
+    <p>No hay empresas cargadas aún.</p>
+    {% endif %}
+</div>
+{% endblock %}
