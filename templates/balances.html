@@ -4,11 +4,14 @@
 <div class="card">
     <h2>Balances Cargados</h2>
     {% if balances %}
+    <div style="margin-bottom: 15px;">
+        <input type="text" id="balanceSearch" onkeyup="filterBalances()" placeholder="Filtrar por nombre de empresa..." style="padding: 8px; width: 300px;">
+    </div>
     <table>
         <thead>
             <tr>
                 <th>Empresa</th>
-                <th>Año</th>
+                <th>Fecha</th>
                 <th>Disponibilidades</th>
                 <th>Activo corriente</th>
                 <th>Activo no corriente</th>
@@ -18,11 +21,11 @@
                 <th>Acciones</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="balanceTableBody">
             {% for balance in balances %}
             <tr>
                 <td>{{ balance.empresa.razon_social }}</td>
-                <td>{{ balance.anio }}</td>
+                <td>{{ balance.fecha_balance | format_date }}</td>
                 <td>{{ balance.disponibilidades | format_es }}</td>
                 <td>{{ balance.activo_corriente | format_es }}</td>
                 <td>{{ balance.activo_no_corriente | format_es }}</td>
@@ -44,4 +47,17 @@
     <p>No hay balances cargados.</p>
     {% endif %}
 </div>
+
+<script>
+function filterBalances() {
+    const input = document.getElementById('balanceSearch');
+    const filter = input.value.toLowerCase();
+    const rows = document.getElementById('balanceTableBody').getElementsByTagName('tr');
+
+    for (let i = 0; i < rows.length; i++) {
+        const companyName = rows[i].getElementsByTagName('td')[0].textContent || rows[i].getElementsByTagName('td')[0].innerText;
+        rows[i].style.display = companyName.toLowerCase().includes(filter) ? "" : "none";
+    }
+}
+</script>
 {% endblock %}

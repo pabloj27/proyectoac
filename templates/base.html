@@ -5,30 +5,63 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gestión de Empresas y EECC</title>
     <style>
-        body { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; font-size: 1.15rem; margin: 0; padding: 0; background: #f8f9fa; }
-        header { background: #003366; color: white; padding: 16px; border-bottom: 4px solid #002244; }
-        nav a { color: white; margin-right: 16px; text-decoration: none; }
-        main { padding: 24px; }
-        .card { background: white; border: 1px solid #dcdcdc; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-        th, td { padding: 10px 8px; border: 1px solid #dee2e6; }
-        th { background: #e9ecef; }
+        :root {
+            --primary-color: #005580; /* Azul de los enlaces */
+            --highlight-orange: #FFC894; /* Naranja de las celdas */
+            --header-gray: #C0C0C0; /* Gris de los encabezados */
+            --bg-crema: #FFF5E1; /* Crema/Beige del fondo */
+            --text-black: #000000;
+            --white: #ffffff;
+            --border-dark: #808080;
+        }
+        body { 
+            font-family: Verdana, Tahoma, Arial, sans-serif; 
+            font-size: 0.95rem; 
+            margin: 0; padding: 0; 
+            background: var(--bg-crema); 
+            color: var(--text-black); 
+            overflow: hidden; 
+        }
+        header { background: var(--header-gray); color: var(--primary-color); padding: 8px 24px; border-bottom: 2px solid var(--primary-color); display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1); z-index: 100; }
+        .logo { height: 50px; }
+        nav a { color: var(--primary-color); margin-left: 20px; text-decoration: underline; font-weight: bold; font-size: 0.9rem; }
+        nav a:hover { color: var(--text-black); }
+        main { padding: 0; height: calc(100vh - 70px); overflow-y: auto; }
+        .card { background: var(--white); border: 1px solid var(--header-gray); border-radius: 4px; padding: 20px; margin-bottom: 16px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.9rem; background: var(--white); }
+        th, td { padding: 6px 10px; border: 1px solid var(--border-dark); }
+        th { background: var(--header-gray); color: var(--primary-color); font-weight: bold; text-decoration: underline; text-transform: none; }
+        tr:nth-child(even) { background-color: var(--highlight-orange); }
         label { display: block; margin-top: 12px; font-weight: bold; }
-        input, select, textarea { font-family: inherit; font-size: 1rem; width: 100%; padding: 8px; margin-top: 6px; border: 1px solid #ced4da; border-radius: 4px; }
-        button { margin-top: 16px; padding: 10px 18px; background: #003366; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #002244; }
-        @media print { .no-pdf { display: none !important; } }
+        input, select, textarea { font-family: Verdana, sans-serif; font-size: 0.9rem; width: 100%; padding: 6px; margin-top: 4px; border: 1px solid var(--border-dark); border-radius: 2px; }
+        button { margin-top: 16px; padding: 8px 20px; background: var(--primary-color); color: var(--white); border: 1px solid var(--text-black); border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { filter: brightness(1.2); }
+        h2, h3 { color: var(--primary-color); border-bottom: 1px solid var(--header-gray); padding-bottom: 6px; font-weight: bold; }
+        .only-pdf { display: none; }
+        @media print { 
+            .no-pdf { display: none !important; } 
+            .only-pdf { display: block !important; }
+            body { overflow: visible; }
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-        function exportToPDF(elementId, filename) {
+        function exportToPDF(elementId, filename, orientation = 'portrait') {
+            // Actualizar la fecha de generación si existe el elemento correspondiente
+            const dateSpan = document.getElementById('current_date_pdf');
+            if (dateSpan) {
+                const now = new Date();
+                dateSpan.textContent = now.toLocaleDateString('es-AR') + ' ' + now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+            }
+
             const element = document.getElementById(elementId);
             const opt = {
-                margin: 10,
+                margin: 5,
                 filename: filename + '.pdf',
                 image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2 },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: orientation }
             };
             html2pdf().set(opt).from(element).save();
         }
@@ -36,12 +69,16 @@
 </head>
 <body>
     <header class="no-pdf">
+        <div style="display: flex; align-items: center;">
+            <img src="https://www.fianzasycredito.com/wp-content/themes/fianzasycredito/img/logo.png" alt="Fianzas y Crédito" class="logo">
+        </div>
         <nav>
             <a href="/">Inicio</a>
             <a href="/entry">Nueva captura</a>
             <a href="/companies">Empresas</a>
             <a href="/balances">Balances</a>
             <a href="/metrics">Métricas</a>
+            <a href="/help">Ayuda</a>
         </nav>
     </header>
     <main>

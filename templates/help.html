@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width: 900px; margin: 20px auto; line-height: 1.6;">
+    <h2>Guía de Uso y Metodología de Scoring</h2>
+    
+    <section>
+        <h3>1. Funcionamiento General</h3>
+        <p>Esta aplicación permite centralizar el análisis de riesgo crediticio. El flujo de trabajo estándar es:</p>
+        <ul>
+            <li><strong>Captura:</strong> Se ingresan los datos de la empresa y los saldos de los Estados Contables (EECC).</li>
+            <li><strong>Comparativa:</strong> El sistema permite cargar un período actual y uno comparativo para analizar variaciones temporales.</li>
+            <li><strong>Automatización:</strong> Los ratios, métricas por segmento y el Scoring se calculan en tiempo real sin necesidad de recargar la página.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h3>2. Criterios de Aceptación (Filtros Hard)</h3>
+        <p>Antes de calcular el Scoring, el sistema evalúa dos criterios críticos que pueden determinar el rechazo inmediato:</p>
+        <ul>
+            <li><strong>Patrimonio Neto Positivo:</strong> Se rechaza si el PN es menor a cero (Insolvencia técnica).</li>
+            <li><strong>Capital de Trabajo:</strong> Se rechaza si el CT es negativo en los dos últimos ejercicios de forma consecutiva (Déficit estructural de liquidez).</li>
+        </ul>
+    </section>
+
+    <section>
+        <h3>3. Metodología del Scoring (Escala 1-10)</h3>
+        <p>El Scoring se calcula mediante una media ponderada de tres pilares fundamentales:</p>
+        
+        <h4>A. Liquidez (Peso: 40%)</h4>
+        <p>Evalúa la capacidad de pago a corto plazo y el pulmón operativo.</p>
+        <table style="font-size: 0.85rem;">
+            <tr><th>Indicador</th><th>Rango</th><th>Puntos</th></tr>
+            <tr><td>Liquidez Corriente</td><td> > 1.50 / 1.00</td><td>3.0 / 1.5</td></tr>
+            <tr><td>Cap. Trabajo / Ventas</td><td> > 15% / 5%</td><td>7.0 / 4.0</td></tr>
+        </table>
+
+        <h4>B. Solvencia (Peso: 30%)</h4>
+        <p>Mide la estructura de capital y el nivel de apalancamiento financiero.</p>
+        <table style="font-size: 0.85rem;">
+            <tr><th>Indicador</th><th>Rango</th><th>Puntos</th></tr>
+            <tr><td>PN / Activos (Solvencia)</td><td> > 40% / 20%</td><td>5.0 / 2.5</td></tr>
+            <tr><td>Deuda Financiera / EBITDA</td><td> < 2.5x / 4.5x</td><td>5.0 / 2.5</td></tr>
+        </table>
+
+        <h4>C. Rentabilidad y Flujo (Peso: 30%)</h4>
+        <p>Analiza la eficiencia operativa y la generación real de caja libre.</p>
+        <table style="font-size: 0.85rem;">
+            <tr><th>Indicador</th><th>Rango</th><th>Puntos</th></tr>
+            <tr><td>EBITDA % (Margen)</td><td> > 15% / 7%</td><td>4.0 / 2.0</td></tr>
+            <tr><td>ROE (Rent. PN)</td><td> > 15% / 5%</td><td>3.0 / 1.5</td></tr>
+            <tr><td>Flujo Libre / Ventas</td><td> > 5% / > 0%</td><td>3.0 / 1.5</td></tr>
+        </table>
+    </section>
+
+    <section>
+        <h3>4. Escala de Calificación</h3>
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <div style="flex: 1; padding: 10px; background: #198754; color: white; border-radius: 4px; text-align: center;">
+                <strong>AAA (8.5 - 10)</strong><br>Excelente
+            </div>
+            <div style="flex: 1; padding: 10px; background: #20c997; color: white; border-radius: 4px; text-align: center;">
+                <strong>AA (7.0 - 8.4)</strong><br>Muy Bueno
+            </div>
+            <div style="flex: 1; padding: 10px; background: #ffc107; color: black; border-radius: 4px; text-align: center;">
+                <strong>A (5.0 - 6.9)</strong><br>Aceptable
+            </div>
+            <div style="flex: 1; padding: 10px; background: #dc3545; color: white; border-radius: 4px; text-align: center;">
+                <strong>C (< 5.0)</strong><br>Riesgo Elevado
+            </div>
+        </div>
+    </section>
+
+    <div class="no-pdf" style="margin-top: 30px; text-align: center;">
+        <button onclick="window.history.back()" style="background: #6c757d;">Volver al Análisis</button>
+    </div>
+</div>
+{% endblock %}

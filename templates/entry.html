@@ -1,329 +1,433 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="no-pdf" style="margin-bottom: 15px;">
-    <button onclick="exportToPDF('report-container', 'Analisis_Empresa_{{ selected_company.razon_social if selected_company else 'Nueva' }}')">Exportar Reporte a PDF</button>
+<style>
+    .split-layout {
+        display: flex;
+        flex: 1;
+        overflow: hidden; gap: 10px; padding: 0 10px;
+    }
+    .column {
+        height: 100%;
+        overflow-y: auto;
+        padding: 12px;
+        box-sizing: border-box;
+    }
+    .column-left { flex: 0.8; border-right: 2px solid var(--header-gray); min-width: 300px; max-width: 350px; }
+    .column-right { flex: 2.5; background: var(--bg-crema); }
+    .accounting-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+        background: #fff;
+    }
+    .accounting-table th {
+        background: var(--header-gray);
+        color: var(--primary-color);
+        font-size: 0.65rem;
+        padding: 3px;
+        border: 1px solid var(--border-dark);
+    }
+    .accounting-table td {
+        border: 1px solid var(--border-dark);
+        padding: 4px;
+        font-size: 0.85rem;
+    }
+    .accounting-table input {
+        border: none; background: transparent; width: 100%; text-align: right; font-family: inherit; font-size: 0.8rem; padding: 1px;
+    }
+    .accounting-table .readonly-bg { background-color: #eeeeee; font-weight: bold; }
+    .accounting-table .total-row { font-weight: bold; background-color: #f9f9f9; }
+    .pct-var { font-weight: bold; text-align: right; font-size: 0.75rem; }
+
+    .company-banner-header {
+        background: var(--primary-color);
+        color: var(--white);
+        padding: 12px 20px;
+        border-radius: 4px;
+        margin: 8px 12px;
+        border-bottom: 4px solid var(--highlight-orange);
+    }
+    .company-banner-header h1 {
+        margin: 0;
+        font-size: 1.8rem;
+        text-transform: uppercase;
+        text-decoration: none;
+        color: var(--white);
+    }
+    .company-banner-header p {
+        margin: 5px 0 0 0;
+        font-size: 0.95rem;
+        opacity: 0.9;
+    }
+    @media print {
+        #report-container { font-size: 0.6rem; background: #fff !important; width: 100% !important; }
+        .company-banner-header { padding: 5px 15px; margin: 0 0 5px 0; border-bottom: 2px solid var(--highlight-orange); -webkit-print-color-adjust: exact; }
+        .company-banner-header h1 { font-size: 1.1rem; }
+        .company-banner-header p { font-size: 0.8rem; }
+        .card { padding: 4px; margin-bottom: 4px; border: 1px solid #eee; page-break-inside: avoid; break-inside: avoid; box-shadow: none; -webkit-print-color-adjust: exact; }
+        h3 { font-size: 0.75rem; margin: 1px 0; padding-bottom: 1px; }
+        h4 { font-size: 0.7rem; margin: 1px 0; }
+        .accounting-table th, .accounting-table td { font-size: 0.5rem !important; padding: 0px 2px !important; -webkit-print-color-adjust: exact; }
+        .accounting-table input { font-size: 0.5rem !important; height: auto; }
+        textarea { font-size: 0.7rem !important; line-height: 1.1 !important; padding: 2px !important; border: 1px solid #eee !important; overflow: hidden; height: auto !important; }
+        .split-layout { display: flex !important; flex-direction: row !important; height: auto !important; overflow: visible !important; gap: 5px; padding: 0 !important; }
+        .column { height: auto !important; overflow: visible !important; padding: 0 !important; border: none !important; }
+        .column-left { flex: 0 0 32% !important; max-width: 32% !important; min-width: 0 !important; }
+        .column-right { flex: 0 0 67% !important; max-width: 67% !important; background: transparent !important; }
+        .inner-flex { display: flex !important; flex-direction: row !important; gap: 5px !important; align-items: stretch !important; }
+        .no-pdf { display: none !important; }
+        .only-pdf { display: block !important; }
+        input { border: none !important; background: transparent !important; }
+        canvas { max-height: 120px !important; width: 100% !important; }
+        body { background: white !important; overflow: visible !important; }
+        tr:nth-child(even) { background-color: var(--highlight-orange) !important; -webkit-print-color-adjust: exact; }
+    }
+</style>
+
+<div class="no-pdf" style="padding: 6px 20px; background: var(--header-gray); border-bottom: 1px solid var(--primary-color);">
+    <button onclick="exportToPDF('report-container', 'Analisis_{{ selected_company.razon_social if selected_company else 'Empresa' }}', 'landscape')" style="margin:0;">Exportar Reporte a PDF</button>
 </div>
 
-<div id="report-container">
-<div class="card">
-    <h2>Captura única de empresa y EECC</h2>
-    {% if message %}
-    <p><strong>{{ message }}</strong></p>
+<div id="report-container" style="display: flex; flex-direction: column; height: 100%;">
+    {% if selected_company %}
+    <div class="company-banner-header">
+        <h1 id="banner_razon_social">{{ selected_company.razon_social }}</h1>
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <p style="margin:0;"><strong>CUIT:</strong> <span id="banner_cuit">{{ selected_company.cuit }}</span></p>
+            <p class="only-pdf" style="margin:0; font-size: 0.8rem; opacity: 0.8;">Reporte generado el: <span id="current_date_pdf"></span></p>
+        </div>
+    </div>
     {% endif %}
 
-    <form method="get" id="selectCompanyForm" class="no-pdf" style="margin-bottom: 20px; display:flex; gap:16px; flex-wrap: wrap; align-items:flex-end;">
-        <div style="flex:1; min-width:220px;">
-            <label for="company_id_select">Seleccionar empresa existente</label>
-            <select id="company_id_select" name="company_id" onchange="this.form.submit()">
-                <option value="">Nueva empresa</option>
-                {% for empresa in companies %}
-                <option value="{{ empresa.id }}" {% if selected_company and selected_company.id == empresa.id %}selected{% endif %}>
-                    {{ empresa.razon_social }} - {{ empresa.cuit }}
-                </option>
-                {% endfor %}
-            </select>
+    <form method="post" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+        <input type="hidden" name="company_id" value="{{ selected_company.id if selected_company else '' }}" />
+
+        {% if message %}
+        <div class="no-pdf" style="padding: 10px; margin: 10px 12px; border-radius: 4px; 
+            background-color: {{ 'rgba(0,128,0,0.1)' if 'Error' not in message else 'rgba(255,0,0,0.1)' }}; 
+            color: {{ 'green' if 'Error' not in message else 'red' }}; 
+            border: 1px solid {{ 'green' if 'Error' not in message else 'red' }}; font-weight: bold;">
+            {{ message }}
         </div>
-        <div style="flex:1; min-width:160px;">
-            <label for="selected_year">Año balance</label>
-            <input type="number" id="selected_year" name="selected_year" value="{{ selected_year }}" onchange="this.form.submit()" />
+        {% endif %}
+
+<div class="split-layout">
+    <!-- COLUMNA IZQUIERDA (1/3) -->
+    <div class="column column-left">
+<div class="card">
+    <div class="no-pdf" style="margin-bottom: 12px; border-bottom: 1px solid #ddd; padding-bottom: 8px;">
+        <label>Buscar Empresa:</label>
+        <select id="company_id_select" style="width:100%; margin-bottom: 8px;" onchange="if(this.value) window.location.href='/entry?company_id='+this.value">
+            <option value="">-- Seleccione Existente --</option>
+            {% for empresa in companies %}<option value="{{ empresa.id }}" {% if selected_company and selected_company.id == empresa.id %}selected{% endif %}>{{ empresa.razon_social }} ({{ empresa.cuit }})</option>{% endfor %}
+        </select>
+        <div style="display:flex; gap:8px;">
+            <button type="button" onclick="window.location.href='/entry'" style="margin:0; padding: 4px 10px; font-size: 0.75rem;">Limpiar / Nueva</button>
+            {% if selected_company %}
+            <button type="button" onclick="window.location.href='/entry?company_id={{selected_company.id}}&new=1'" style="margin:0; padding: 4px 10px; font-size: 0.75rem; background: #6c757d;">+ Nuevo Período</button>
+            {% endif %}
         </div>
-        <div style="flex:1; min-width:160px;">
-            <label for="comparativo_year">Año comparativo</label>
-            <input type="number" id="comparativo_year" name="comparativo_year" value="{{ comparativo_year }}" onchange="this.form.submit()" />
+    </div>
+    <h3>Datos Identificatorios</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <div style="grid-column: span 2;">
+            <label>Razón Social</label>
+            <input type="text" id="razon_social" name="razon_social" value="{{ selected_company.razon_social if selected_company else '' }}" required>
         </div>
         <div>
-            <button type="submit">Cargar</button>
+            <label>CUIT (11 dígitos)</label>
+            <input type="text" id="cuit" name="cuit" value="{{ selected_company.cuit if selected_company else '' }}" required pattern="\d{11}" maxlength="11" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+        </div>
+        <div>
+            <label>Sector</label>
+            <input type="text" id="sector" name="sector" value="{{ selected_company.sector if selected_company else '' }}">
+        </div>
+        <div>
+            <label>Actividad Principal</label>
+            <input type="text" id="actividad" name="actividad" value="{{ selected_company.actividad if selected_company else '' }}">
+        </div>
+        <div>
+            <label>Año Fundación</label>
+            <input type="number" id="anio_fundacion" name="anio_fundacion" value="{{ selected_company.anio_fundacion if selected_company else '' }}" placeholder="Ej: 1990">
+        </div>
+    </div>
+    <div style="display: flex; gap: 10px; margin-top: 10px; border-top: 1px solid #eee; padding-top: 8px;">
+        <div style="flex: 1; display: flex; flex-direction: column;">
+            <label>Fecha Actual (DD/MM/AAAA)</label>
+            <input type="text" id="selected_date" name="selected_date" placeholder="DD/MM/AAAA" value="{{ selected_date | format_date }}" required maxlength="10" pattern="(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[012])/(19|20)\d\d" class="date-mask">
+            <button type="button" onclick="reloadWithDate('selected_date')" style="margin-top: 4px; padding: 2px; font-size: 0.7rem; background: #6c757d;">Cargar Período</button>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column;">
+            <label>Fecha Comp. (DD/MM/AAAA)</label>
+            <input type="text" id="comparativo_date" name="comparativo_date" placeholder="DD/MM/AAAA" value="{{ comparativo_date | format_date }}" maxlength="10" pattern="(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[012])/(19|20)\d\d" class="date-mask">
+            <button type="button" onclick="reloadWithDate('comparativo_date')" style="margin-top: 4px; padding: 2px; font-size: 0.7rem; background: #6c757d;">Cargar Período</button>
+        </div>
+    </div>
+    <button type="submit" class="no-pdf" style="width: 100%; background: #0077b6; margin-top: 15px;">Guardar Empresa y EECC</button>
+</div>
+    </div>
+
+    <!-- COLUMNA DERECHA (2/3) -->
+    <div class="column column-right">
+                <div class="card" style="border-left: 5px solid var(--primary-color);">
+                    <h3>Contexto de la Empresa</h3>
+                    <div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 0.85rem; align-items: baseline;">
+                        <strong>R. Social:</strong> <span id="reflect_razon_social">{{ selected_company.razon_social if selected_company else '-' }}</span>
+                        <strong>CUIT:</strong> <span id="reflect_cuit">{{ selected_company.cuit if selected_company else '-' }}</span>
+                        <strong>Sector:</strong> <span id="reflect_sector">{{ selected_company.sector if selected_company else '-' }}</span>
+                        <strong>Actividad:</strong> <span id="reflect_actividad">{{ selected_company.actividad if selected_company else '-' }}</span>
+                    </div>
+                    <div style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 8px;">
+                        <strong>Descripción General:</strong>
+                        <textarea name="descripcion" id="descripcion" rows="5" style="margin-top:5px; background:#fcfcfc; border: 1px solid #ddd;">{{ selected_company.descripcion if selected_company else '' }}</textarea>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Cuadro de Saldos</h3>
+                    <table class="accounting-table">
+                        <thead>
+                            <tr>
+                                <th style="text-align: left;">Concepto</th>
+                                <th>{{ selected_date | format_date }}</th>
+                                <th>{{ comparativo_date | format_date }}</th>
+                                <th style="width: 50px;">Var%</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="background: #f2f2f2; font-weight: bold;"><td colspan="4">ESTADO DE SITUACIÓN PATRIMONIAL</td></tr>
+                            <tr><td>Caja y Bancos</td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="actual_disponibilidades" name="actual_disponibilidades" value="{{ actual_balance.disponibilidades if actual_balance else '0.0' }}"></td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_disponibilidades" name="comparativo_disponibilidades" value="{{ comparativo_balance.disponibilidades if comparativo_balance else '0.0' }}"></td>
+                                <td id="pct_disponibilidades" class="pct-var">-</td>
+                            </tr>
+                            <tr><td>Activo Corriente</td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="actual_activo_corriente" name="actual_activo_corriente" value="{{ actual_balance.activo_corriente if actual_balance else '0.0' }}"></td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_activo_corriente" name="comparativo_activo_corriente" value="{{ comparativo_balance.activo_corriente if comparativo_balance else '0.0' }}"></td>
+                                <td id="pct_activo_corriente" class="pct-var">-</td>
+                            </tr>
+                            <tr><td>Activo No Corriente</td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="actual_activo_no_corriente" name="actual_activo_no_corriente" value="{{ actual_balance.activo_no_corriente if actual_balance else '0.0' }}"></td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_activo_no_corriente" name="comparativo_activo_no_corriente" value="{{ comparativo_balance.activo_no_corriente if comparativo_balance else '0.0' }}"></td>
+                                <td id="pct_activo_no_corriente" class="pct-var">-</td>
+                            </tr>
+                            <tr class="total-row"><td>ACTIVO TOTAL</td>
+                                <td><input type="text" id="actual_activo_total" class="numeric readonly-bg" readonly></td>
+                                <td><input type="text" id="comparativo_activo_total" class="numeric readonly-bg" readonly></td>
+                                <td id="pct_activo_total" class="pct-var">-</td>
+                            </tr>
+                            <tr><td>Pasivo Corriente</td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="actual_pasivo_corriente" name="actual_pasivo_corriente" value="{{ actual_balance.pasivo_corriente if actual_balance else '0.0' }}"></td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_pasivo_corriente" name="comparativo_pasivo_corriente" value="{{ comparativo_balance.pasivo_corriente if comparativo_balance else '0.0' }}"></td>
+                                <td id="pct_pasivo_corriente" class="pct-var">-</td>
+                            </tr>
+                            <tr><td>Pasivo No Corriente</td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="actual_pasivo_no_corriente" name="actual_pasivo_no_corriente" value="{{ actual_balance.pasivo_no_corriente if actual_balance else '0.0' }}"></td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_pasivo_no_corriente" name="comparativo_pasivo_no_corriente" value="{{ comparativo_balance.pasivo_no_corriente if comparativo_balance else '0.0' }}"></td>
+                                <td id="pct_pasivo_no_corriente" class="pct-var">-</td>
+                            </tr>
+                            <tr class="total-row"><td>PASIVO TOTAL</td>
+                                <td><input type="text" id="actual_pasivo_total" class="numeric readonly-bg" readonly></td>
+                                <td><input type="text" id="comparativo_pasivo_total" class="numeric readonly-bg" readonly></td>
+                                <td id="pct_pasivo_total" class="pct-var">-</td>
+                            </tr>
+                            <tr class="total-row" style="background: var(--highlight-orange);"><td>PATRIMONIO NETO</td>
+                                <td><input type="text" id="actual_patrimonio_neto" class="numeric readonly-bg" readonly></td>
+                                <td><input type="text" id="comparativo_patrimonio_neto" class="numeric readonly-bg" readonly></td>
+                                <td id="pct_patrimonio_neto" class="pct-var">-</td>
+                            </tr>
+                            <tr><td>Deuda Financiera</td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="actual_deuda_financiera" name="actual_deuda_financiera" value="{{ actual_balance.deuda_financiera if actual_balance else '0.0' }}"></td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_deuda_financiera" name="comparativo_deuda_financiera" value="{{ comparativo_balance.deuda_financiera if comparativo_balance else '0.0' }}"></td>
+                                <td id="pct_deuda_financiera" class="pct-var">-</td>
+                            </tr>
+                            <tr style="background: #f2f2f2; font-weight: bold;"><td colspan="4">ESTADO DE RESULTADOS</td></tr>
+                            <tr><td>Ventas</td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="actual_ventas" name="actual_ventas" value="{{ actual_balance.ventas if actual_balance else '0.0' }}"></td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_ventas" name="comparativo_ventas" value="{{ comparativo_balance.ventas if comparativo_balance else '0.0' }}"></td>
+                                <td id="pct_ventas" class="pct-var">-</td>
+                            </tr>
+                            <tr><td>Resultado Operativo</td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="actual_resultado_operativo" name="actual_resultado_operativo" value="{{ actual_balance.resultado_operativo if actual_balance else '0.0' }}"></td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_resultado_operativo" name="comparativo_resultado_operativo" value="{{ comparativo_balance.resultado_operativo if comparativo_balance else '0.0' }}"></td>
+                                <td id="pct_resultado_operativo" class="pct-var">-</td>
+                            </tr>
+                            <tr><td>EBITDA</td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="actual_ebitda" name="actual_ebitda" value="{{ actual_balance.ebitda if actual_balance else '0.0' }}"></td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_ebitda" name="comparativo_ebitda" value="{{ comparativo_balance.ebitda if comparativo_balance else '0.0' }}"></td>
+                                <td id="pct_ebitda" class="pct-var">-</td>
+                            </tr>
+                            <tr><td>Resultado Neto</td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="actual_resultado_neto" name="actual_resultado_neto" value="{{ actual_balance.resultado_neto if actual_balance else '0.0' }}"></td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_resultado_neto" name="comparativo_resultado_neto" value="{{ comparativo_balance.resultado_neto if comparativo_balance else '0.0' }}"></td>
+                                <td id="pct_resultado_neto" class="pct-var">-</td>
+                            </tr>
+                            <tr style="background: #f2f2f2; font-weight: bold;"><td colspan="4">FLUJO DE FONDOS</td></tr>
+                            <tr><td>F. Caja Operativo</td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="actual_flujo_caja_operativo" name="actual_flujo_caja_operativo" value="{{ actual_balance.flujo_caja_operativo if actual_balance else '0.0' }}"></td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_flujo_caja_operativo" name="comparativo_flujo_caja_operativo" value="{{ comparativo_balance.flujo_caja_operativo if comparativo_balance else '0.0' }}"></td>
+                                <td id="pct_flujo_caja_operativo" class="pct-var">-</td>
+                            </tr>
+                            <tr><td>Capex</td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="actual_capex" name="actual_capex" value="{{ actual_balance.capex if actual_balance else '0.0' }}"></td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_capex" name="comparativo_capex" value="{{ comparativo_balance.capex if comparativo_balance else '0.0' }}"></td>
+                                <td id="pct_capex" class="pct-var">-</td>
+                            </tr>
+                            <tr><td>Dividendos</td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="actual_dividendos" name="actual_dividendos" value="{{ actual_balance.dividendos if actual_balance else '0.0' }}"></td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_dividendos" name="comparativo_dividendos" value="{{ comparativo_balance.dividendos if comparativo_balance else '0.0' }}"></td>
+                                <td id="pct_dividendos" class="pct-var">-</td>
+                            </tr>
+                            <tr class="total-row"><td>F. CAJA LIBRE</td>
+                                <td><input type="text" id="actual_flujo_caja_libre" class="numeric readonly-bg" readonly></td>
+                                <td><input type="text" id="comparativo_flujo_caja_libre" class="numeric readonly-bg" readonly></td>
+                                <td id="pct_flujo_caja_libre" class="pct-var">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card">
+                    <h3>Comparativa Visual</h3>
+                    <div class="chart-wrapper" style="position: relative; height: 25vh; min-height: 150px; max-height: 300px; width: 100%;">
+                        <canvas id="comparisonChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="inner-flex" style="display: flex; gap: 10px; align-items: stretch;">
+                    <div class="card" style="flex: 1;">
+                    <h3>Métricas por segmento</h3>
+                    {% if actual_metrics or comparativo_metrics %}
+                        {% set display_metrics = actual_metrics if actual_metrics else comparativo_metrics %}
+                        {% for segment, actual_segment in display_metrics.items() %}
+                            <h4>{{ segment | replace('_', ' ') | title }}</h4>
+                            <table style="font-size: 0.7rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Métrica</th>
+                                        <th>{{ selected_date | format_date }}</th>
+                                        <th class="no-pdf">{{ comparativo_date | format_date }}</th>
+                                        <th>Var %</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for name, actual_value in actual_segment.items() %}
+                                        {% set comparativo_segment = comparativo_metrics.get(segment, {}) %}
+                                        {% set comparativo_value = comparativo_segment.get(name, 0) %}
+                                        {% set diff_pct = 0 %}
+                                        {% if comparativo_value and comparativo_value != 0 %}
+                                            {% set diff_pct = ((actual_value - comparativo_value) / comparativo_value|abs) * 100 %}
+                                        {% endif %}
+                                        <tr>
+                                            <td>{{ name }}</td>
+                                            <td>{{ actual_value | format_es(2) }}</td>
+                                            <td class="no-pdf">{{ comparativo_value | format_es(2) }}</td>
+                                            <td style="color: {{ 'green' if diff_pct >= 0 else 'red' }}; font-weight: bold;">
+                                                {{ diff_pct | format_es(1) }}%
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        {% endfor %}
+                    {% else %}
+                        <p>Llena el balance para ver métricas.</p>
+                    {% endif %}
+                    </div>
+
+                <div class="card" style="flex: 1; border-top: 5px solid {{ actual_scoring.color if actual_scoring else '#ccc' }};">
+                    <h3>Criterios de Aceptación</h3>
+                    <div style="font-size: 0.8rem; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #eee;">
+                            <span><strong>Patrimonio Neto Positivo:</strong></span>
+                            <span id="crit_pn_status" style="font-weight: bold;">-</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #eee;">
+                            <span><strong>Cap. Trabajo (No recurrente negativo):</strong></span>
+                            <span id="crit_ct_status" style="font-weight: bold;">-</span>
+                        </div>
+                    </div>
+
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
+                    <h3>Scoring de Riesgo (1-10)</h3>
+                    {% if actual_scoring %}
+                    <div style="text-align: center; padding: 5px 0;">
+                        <div style="font-size: 2.2rem; font-weight: bold; color: {{ actual_scoring.color }};">
+                            {{ actual_scoring.total }}
+                        </div>
+                        <div style="font-weight: bold; text-transform: uppercase; font-size: 0.85rem;">
+                            Calificación: {{ actual_scoring.label }}
+                        </div>
+                    </div>
+                    <div style="font-size: 0.75rem; margin-top: 5px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 2px;"><span>Liquidez (40%):</span> <strong>{{ actual_scoring.liquidez }}</strong></div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 2px;"><span>Solvencia (30%):</span> <strong>{{ actual_scoring.solvencia }}</strong></div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 2px;"><span>Rent. y Flujo (30%):</span> <strong>{{ actual_scoring.rentabilidad }}</strong></div>
+                    </div>
+                    {% else %}
+                    <p style="font-size: 0.8rem; color: #666;">Ingrese datos para calcular el scoring.</p>
+                    {% endif %}
+
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
+                    <h3>Informe de Riesgo y Conclusiones</h3>
+                    <textarea name="actual_analisis" rows="18" style="width: 100%; border: 1px solid #bbb; font-size: 1rem; line-height: 1.4; padding:12px; background: #fff;">{{ actual_balance.analisis if actual_balance else '' }}</textarea>
+                </div>
+                </div>
+            </div>
         </div>
     </form>
-
-    {% if selected_company %}
-    <div class="card" style="background:#f1f7ff;">
-        <h3>Empresa seleccionada</h3>
-        <p>
-            <strong>{{ selected_company.razon_social }}</strong> - {{ selected_company.cuit }}<br />
-            Actividad: {{ selected_company.actividad or '-' }}<br />
-            Año fundación: {{ selected_company.anio_fundacion or '-' }}<br />
-            Descripción: {{ selected_company.descripcion or '-' }}
-        </p>
-    </div>
-    {% endif %}
-
-    {% if selected_company and previous_balances %}
-    <div class="card">
-        <h3>Balances anteriores</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>Año</th>
-                    <th>PN</th>
-                    <th>Capital de trabajo</th>
-                    <th>EBITDA</th>
-                    <th>Resultado neto</th>
-                    <th>Ventas</th>
-                    <th>Res. Operativo</th>
-                    <th>Activo corriente</th>
-                    <th>Pasivo corriente</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for balance in previous_balances %}
-                <tr>
-                    <td>{{ balance.anio }}</td>
-                    <td>{{ ((balance.activo_corriente + balance.activo_no_corriente) - (balance.pasivo_corriente + balance.pasivo_no_corriente)) | format_es }}</td>
-                    <td>{{ (balance.activo_corriente - balance.pasivo_corriente) | format_es }}</td>
-                    <td>{{ balance.ebitda | format_es }}</td>
-                    <td>{{ balance.resultado_neto | format_es }}</td>
-                    <td>{{ balance.ventas | format_es }}</td>
-                    <td>{{ balance.resultado_operativo | format_es }}</td>
-                    <td>{{ balance.activo_corriente | format_es }}</td>
-                    <td>{{ balance.pasivo_corriente | format_es }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% endif %}
-
-    <form method="post" class="no-pdf">
-        <input type="hidden" name="company_id" value="{{ selected_company.id if selected_company else '' }}" />
-        <input type="hidden" name="selected_year" value="{{ selected_year }}" />
-        <input type="hidden" name="comparativo_year" value="{{ comparativo_year }}" />
-
-        <h3>Datos de la empresa</h3>
-        <label for="cuit">CUIT</label>
-        <input type="text" id="cuit" name="cuit" value="{{ selected_company.cuit if selected_company else '' }}" required />
-
-        <label for="razon_social">Razón social</label>
-        <input type="text" id="razon_social" name="razon_social" value="{{ selected_company.razon_social if selected_company else '' }}" required />
-
-        <label for="actividad">Actividad</label>
-        <input type="text" id="actividad" name="actividad" value="{{ selected_company.actividad if selected_company else '' }}" />
-
-        <label for="anio_fundacion">Año de fundación</label>
-        <input type="number" id="anio_fundacion" name="anio_fundacion" value="{{ selected_company.anio_fundacion if selected_company else '' }}" />
-
-        <label for="descripcion">Descripción</label>
-        <textarea id="descripcion" name="descripcion" rows="3">{{ selected_company.descripcion if selected_company else '' }}</textarea>
-
-        <h3>Información contable</h3>
-        <div style="display:flex; gap:24px; flex-wrap: wrap;">
-            <div style="flex:1; min-width:260px;">
-                <h4>Año {{ selected_year }}</h4>
-                <label for="actual_disponibilidades">Disponibilidades</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_disponibilidades" name="actual_disponibilidades" value="{{ actual_balance.disponibilidades if actual_balance else '0.0' }}" />
-
-                <label for="actual_activo_corriente">Activo corriente</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_activo_corriente" name="actual_activo_corriente" value="{{ actual_balance.activo_corriente if actual_balance else '0.0' }}" />
-
-                <label for="actual_activo_no_corriente">Activo no corriente</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_activo_no_corriente" name="actual_activo_no_corriente" value="{{ actual_balance.activo_no_corriente if actual_balance else '0.0' }}" />
-
-                <label for="actual_activo_total">Activo total</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_activo_total" value="{{ ((actual_balance.activo_corriente or 0.0) + (actual_balance.activo_no_corriente or 0.0)) if actual_balance else 0.0 }}" readonly />
-
-                <label for="actual_pasivo_corriente">Pasivo corriente</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_pasivo_corriente" name="actual_pasivo_corriente" value="{{ actual_balance.pasivo_corriente if actual_balance else '0.0' }}" />
-
-                <label for="actual_pasivo_no_corriente">Pasivo no corriente</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_pasivo_no_corriente" name="actual_pasivo_no_corriente" value="{{ actual_balance.pasivo_no_corriente if actual_balance else '0.0' }}" />
-
-                <label for="actual_pasivo_total">Pasivo total</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_pasivo_total" value="{{ ((actual_balance.pasivo_corriente or 0.0) + (actual_balance.pasivo_no_corriente or 0.0)) if actual_balance else 0.0 }}" readonly />
-
-                <label for="actual_patrimonio_neto">Patrimonio neto</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_patrimonio_neto" value="{{ (((actual_balance.activo_corriente or 0.0) + (actual_balance.activo_no_corriente or 0.0)) - ((actual_balance.pasivo_corriente or 0.0) + (actual_balance.pasivo_no_corriente or 0.0))) if actual_balance else 0.0 }}" readonly />
-
-                <label for="actual_deuda_financiera">Deuda financiera</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_deuda_financiera" name="actual_deuda_financiera" value="{{ actual_balance.deuda_financiera if actual_balance else '0.0' }}" />
-
-                <label for="actual_ventas">Ventas</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_ventas" name="actual_ventas" value="{{ actual_balance.ventas if actual_balance else '0.0' }}" />
-
-                <label for="actual_resultado_operativo">Resultado operativo</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_resultado_operativo" name="actual_resultado_operativo" value="{{ actual_balance.resultado_operativo if actual_balance else '0.0' }}" />
-
-                <label for="actual_ebitda">EBITDA</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_ebitda" name="actual_ebitda" value="{{ actual_balance.ebitda if actual_balance else '0.0' }}" />
-
-                <label for="actual_flujo_caja_operativo">Flujo de Caja Operativo</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_flujo_caja_operativo" name="actual_flujo_caja_operativo" value="{{ actual_balance.flujo_caja_operativo if actual_balance else '0.0' }}" />
-
-                <label for="actual_variacion_capital_trabajo">Variación Capital de Trabajo</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_variacion_capital_trabajo" name="actual_variacion_capital_trabajo" value="{{ actual_balance.variacion_capital_trabajo if actual_balance else '0.0' }}" />
-
-                <label for="actual_flujo_caja_generado">Flujo de Caja Generado</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_flujo_caja_generado" name="actual_flujo_caja_generado" value="{{ (actual_balance.flujo_caja_operativo + actual_balance.variacion_capital_trabajo) if actual_balance else '0.0' }}" readonly />
-
-                <label for="actual_capex">Capex</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_capex" name="actual_capex" value="{{ actual_balance.capex if actual_balance else '0.0' }}" />
-
-                <label for="actual_dividendos">Dividendos</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_dividendos" name="actual_dividendos" value="{{ actual_balance.dividendos if actual_balance else '0.0' }}" />
-
-                <label for="actual_flujo_caja_libre">Flujo de Caja Libre</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_flujo_caja_libre" name="actual_flujo_caja_libre" value="{{ (actual_balance.flujo_caja_operativo - actual_balance.capex - actual_balance.dividendos) if actual_balance else '0.0' }}" readonly />
-
-                <label for="actual_resultado_neto">Resultado neto</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="actual_resultado_neto" name="actual_resultado_neto" value="{{ actual_balance.resultado_neto if actual_balance else '0.0' }}" />
-            </div>
-
-            <div style="flex:1; min-width:260px;">
-                <h4>Año {{ comparativo_year }}</h4>
-                <label for="comparativo_disponibilidades">Disponibilidades</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_disponibilidades" name="comparativo_disponibilidades" value="{{ comparativo_balance.disponibilidades if comparativo_balance else '0.0' }}" />
-
-                <label for="comparativo_activo_corriente">Activo corriente</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_activo_corriente" name="comparativo_activo_corriente" value="{{ comparativo_balance.activo_corriente if comparativo_balance else '0.0' }}" />
-
-                <label for="comparativo_activo_no_corriente">Activo no corriente</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_activo_no_corriente" name="comparativo_activo_no_corriente" value="{{ comparativo_balance.activo_no_corriente if comparativo_balance else '0.0' }}" />
-
-                <label for="comparativo_activo_total">Activo total</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_activo_total" value="{{ ((comparativo_balance.activo_corriente or 0.0) + (comparativo_balance.activo_no_corriente or 0.0)) if comparativo_balance else 0.0 }}" readonly />
-
-                <label for="comparativo_pasivo_corriente">Pasivo corriente</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_pasivo_corriente" name="comparativo_pasivo_corriente" value="{{ comparativo_balance.pasivo_corriente if comparativo_balance else '0.0' }}" />
-
-                <label for="comparativo_pasivo_no_corriente">Pasivo no corriente</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_pasivo_no_corriente" name="comparativo_pasivo_no_corriente" value="{{ comparativo_balance.pasivo_no_corriente if comparativo_balance else '0.0' }}" />
-
-                <label for="comparativo_pasivo_total">Pasivo total</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_pasivo_total" value="{{ ((comparativo_balance.pasivo_corriente or 0.0) + (comparativo_balance.pasivo_no_corriente or 0.0)) if comparativo_balance else 0.0 }}" readonly />
-
-                <label for="comparativo_patrimonio_neto">Patrimonio neto</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_patrimonio_neto" value="{{ (((comparativo_balance.activo_corriente or 0.0) + (comparativo_balance.activo_no_corriente or 0.0)) - ((comparativo_balance.pasivo_corriente or 0.0) + (comparativo_balance.pasivo_no_corriente or 0.0))) if comparativo_balance else 0.0 }}" readonly />
-
-                <label for="comparativo_deuda_financiera">Deuda financiera</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_deuda_financiera" name="comparativo_deuda_financiera" value="{{ comparativo_balance.deuda_financiera if comparativo_balance else '0.0' }}" />
-
-                <label for="comparativo_ventas">Ventas</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_ventas" name="comparativo_ventas" value="{{ comparativo_balance.ventas if comparativo_balance else '0.0' }}" />
-
-                <label for="comparativo_resultado_operativo">Resultado operativo</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_resultado_operativo" name="comparativo_resultado_operativo" value="{{ comparativo_balance.resultado_operativo if comparativo_balance else '0.0' }}" />
-
-                <label for="comparativo_ebitda">EBITDA</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_ebitda" name="comparativo_ebitda" value="{{ comparativo_balance.ebitda if comparativo_balance else '0.0' }}" />
-
-                <label for="comparativo_flujo_caja_operativo">Flujo de Caja Operativo</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_flujo_caja_operativo" name="comparativo_flujo_caja_operativo" value="{{ comparativo_balance.flujo_caja_operativo if comparativo_balance else '0.0' }}" />
-
-                <label for="comparativo_variacion_capital_trabajo">Variación Capital de Trabajo</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_variacion_capital_trabajo" name="comparativo_variacion_capital_trabajo" value="{{ comparativo_balance.variacion_capital_trabajo if comparativo_balance else '0.0' }}" />
-
-                <label for="comparativo_flujo_caja_generado">Flujo de Caja Generado</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_flujo_caja_generado" name="comparativo_flujo_caja_generado" value="{{ (comparativo_balance.flujo_caja_operativo + comparativo_balance.variacion_capital_trabajo) if comparativo_balance else '0.0' }}" readonly />
-
-                <label for="comparativo_capex">Capex</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_capex" name="comparativo_capex" value="{{ comparativo_balance.capex if comparativo_balance else '0.0' }}" />
-
-                <label for="comparativo_dividendos">Dividendos</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_dividendos" name="comparativo_dividendos" value="{{ comparativo_balance.dividendos if comparativo_balance else '0.0' }}" />
-
-                <label for="comparativo_flujo_caja_libre">Flujo de Caja Libre</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_flujo_caja_libre" name="comparativo_flujo_caja_libre" value="{{ (comparativo_balance.flujo_caja_operativo - comparativo_balance.capex - comparativo_balance.dividendos) if comparativo_balance else '0.0' }}" readonly />
-
-                <label for="comparativo_resultado_neto">Resultado neto</label>
-                <input type="text" inputmode="decimal" class="numeric" step="0.01" id="comparativo_resultado_neto" name="comparativo_resultado_neto" value="{{ comparativo_balance.resultado_neto if comparativo_balance else '0.0' }}" />
-            </div>
-        </div>
-
-        <button type="submit">Guardar información</button>
-    </form>
-</div>
-
-<div class="card">
-    <h3>Ratios en vivo</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>Ratio</th>
-                <th>{{ selected_year }}</th>
-                <th>{{ comparativo_year }}</th>
-                <th>Diferencia</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>Current Ratio</td>
-                <td id="live_current_actual">0.00</td>
-                <td id="live_current_comparativo">0.00</td>
-                <td id="live_current_diff">0.00</td>
-            </tr>
-            <tr>
-                <td>Debt Ratio</td>
-                <td id="live_debt_actual">0.00</td>
-                <td id="live_debt_comparativo">0.00</td>
-                <td id="live_debt_diff">0.00</td>
-            </tr>
-            <tr>
-                <td>EBITDA Margin</td>
-                <td id="live_ebitda_actual">0.00</td>
-                <td id="live_ebitda_comparativo">0.00</td>
-                <td id="live_ebitda_diff">0.00</td>
-            </tr>
-            <tr>
-                <td>Return on Assets</td>
-                <td id="live_roa_actual">0.00</td>
-                <td id="live_roa_comparativo">0.00</td>
-                <td id="live_roa_diff">0.00</td>
-            </tr>
-        </tbody>
-    </table>
-</div>
-
-<div class="card">
-    <h3>Métricas por segmento</h3>
-    {% if actual_metrics or comparativo_metrics %}
-        {% set display_metrics = actual_metrics if actual_metrics else comparativo_metrics %}
-        {% for segment, actual_segment in display_metrics.items() %}
-            <h4>{{ segment | replace('_', ' ') | title }}</h4>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Métrica</th>
-                        <th>{{ selected_year }}</th>
-                        <th>{{ comparativo_year }}</th>
-                        <th>Diferencia</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for name, actual_value in actual_segment.items() %}
-                        {% set comparativo_segment = comparativo_metrics.get(segment, {}) %}
-                        {% set comparativo_value = comparativo_segment.get(name, 0) %}
-                        {% set difference = actual_value - comparativo_value %}
-                        <tr>
-                            <td>{{ name }}</td>
-                            <td>{{ actual_value | format_es(2) }}</td>
-                            <td>{{ comparativo_value | format_es(2) }}</td>
-                            <td>{{ difference | format_es(2) }}</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        {% endfor %}
-    {% else %}
-        <p>Llena el balance para ver métricas segmentadas de solvencia, liquidez y flujo de caja.</p>
-    {% endif %}
 </div>
 </div>
 
 <script>
+function filterCompanies(text) {
+    const select = document.getElementById('company_id_select');
+    const options = select.options;
+    const filter = text.toLowerCase();
+    for (let i = 1; i < options.length; i++) {
+        const optionText = options[i].text.toLowerCase();
+        options[i].style.display = optionText.includes(filter) ? '' : 'none';
+    }
+}
+
+function reloadWithDate(paramName) {
+    const el = document.getElementById(paramName);
+    const val = el ? el.value.trim() : '';
+    if (!val) return;
+    const cid = document.getElementsByName('company_id')[0].value;
+    if (!cid) {
+        alert("Seleccione una empresa primero.");
+        return;
+    }
+    const otherParam = paramName === 'selected_date' ? 'comparativo_date' : 'selected_date';
+    const otherVal = document.getElementById(otherParam).value;
+    window.location.href = `/entry?company_id=${cid}&${paramName}=${encodeURIComponent(val)}&${otherParam}=${encodeURIComponent(otherVal)}`;
+}
+
 function parseVal(id) {
     const field = document.getElementById(id);
     if (!field) return 0.0;
-    const raw = String(field.value).trim();
-    if (raw === '') {
-        return 0.0;
+    let val = String(field.value).trim();
+    if (!val) return 0.0;
+
+    // Si el usuario usa comas para decimales (1.234,56)
+    if (val.indexOf(',') !== -1) {
+        val = val.replace(/\./g, '').replace(',', '.');
+    } else if (val.indexOf('.') !== -1) {
+        // Si solo hay un punto y tiene 3 dígitos después, asumimos miles (1.000)
+        const parts = val.split('.');
+        if (parts.length === 2 && parts[1].length === 3) {
+            val = val.replace('.', '');
+        }
     }
-    const sanitized = raw.replace(/\./g, '').replace(/,/, '.').replace(/[^0-9.-]/g, '');
-    const value = parseFloat(sanitized);
-    return Number.isFinite(value) ? value : 0.0;
+    const sanitized = val.replace(/[^0-9.-]/g, '');
+    const num = parseFloat(sanitized);
+    return isFinite(num) ? num : 0.0;
 }
 
 function format(val) {
-    return Number.isFinite(val) ? val.toFixed(2) : '0.00';
+    return formatNumber(val);
 }
 
 function formatNumber(val) {
@@ -333,7 +437,9 @@ function formatNumber(val) {
 }
 
 function unformatNumber(value) {
-    return String(value).replace(/\./g, '').replace(/,/, '.');
+    if (!value) return '';
+    // Al editar, quitamos los puntos de miles para no confundir al usuario
+    return String(value).replace(/\./g, '');
 }
 
 function safeDivide(num, den) {
@@ -343,7 +449,8 @@ function safeDivide(num, den) {
 function computeRatioData(prefix) {
     const activoCorriente = parseVal(prefix + 'activo_corriente');
     const activoNoCorriente = parseVal(prefix + 'activo_no_corriente');
-    const pasivoCorriente = Math.max(parseVal(prefix + 'pasivo_corriente'), 1.0);
+    const pasivoCorrienteInput = parseVal(prefix + 'pasivo_corriente');
+    const pasivoCorriente = Math.max(pasivoCorrienteInput, 1.0);
     const deudaFinanciera = parseVal(prefix + 'deuda_financiera');
     const ventas = Math.max(parseVal(prefix + 'ventas'), 1.0);
     const ebitda = parseVal(prefix + 'ebitda');
@@ -365,32 +472,34 @@ function computeRatioData(prefix) {
     const liabilityTotalField = document.getElementById(prefix + 'pasivo_total');
     const equityField = document.getElementById(prefix + 'patrimonio_neto');
     if (activeTotalField) {
-        activeTotalField.value = assetSum.toFixed(2);
+        activeTotalField.value = formatNumber(assetSum);
     }
     if (liabilityTotalField) {
-        liabilityTotalField.value = totalPasivo.toFixed(2);
+        liabilityTotalField.value = formatNumber(totalPasivo);
     }
     if (equityField) {
-        equityField.value = patrimonioNeto.toFixed(2);
+        equityField.value = formatNumber(patrimonioNeto);
     }
 
     const ratios = {
-        current_ratio: safeDivide(activoCorriente, pasivoCorriente),
-        debt_ratio: safeDivide(deudaFinanciera, totalActivo),
-        ebitda_margin: safeDivide(ebitda, ventas),
+        current_ratio: safeDivide(activoCorriente, pasivoCorrienteInput),
+        debt_ratio: safeDivide(deudaFinanciera, assetSum),
+        ebitda_margin: safeDivide(ebitda, parseVal(prefix + 'ventas')),
         return_on_assets: safeDivide(resultadNetoTotal, totalActivo),
         capital_trabajo: capitalTrabajo,
         flujo_caja_generado_ventas: safeDivide(flujoGenerado, ventas),
         flujo_caja_libre_ventas: safeDivide(flujoLibre, ventas),
+        ventas_raw: parseVal(prefix + 'ventas'),
+        patrimonio_neto: patrimonioNeto
     };
 
     const generatedField = document.getElementById(prefix + 'flujo_caja_generado');
     const freeField = document.getElementById(prefix + 'flujo_caja_libre');
     if (generatedField) {
-        generatedField.value = flujoGenerado.toFixed(2);
+        generatedField.value = formatNumber(flujoGenerado);
     }
     if (freeField) {
-        freeField.value = flujoLibre.toFixed(2);
+        freeField.value = formatNumber(flujoLibre);
     }
 
     return ratios;
@@ -399,23 +508,114 @@ function computeRatioData(prefix) {
 function updateLiveResults() {
     const actual = computeRatioData('actual_');
     const comparativo = computeRatioData('comparativo_');
-    const map = [
-        ['current_ratio', 'live_current_actual', 'live_current_comparativo', 'live_current_diff'],
-        ['debt_ratio', 'live_debt_actual', 'live_debt_comparativo', 'live_debt_diff'],
-        ['ebitda_margin', 'live_ebitda_actual', 'live_ebitda_comparativo', 'live_ebitda_diff'],
-        ['return_on_assets', 'live_roa_actual', 'live_roa_comparativo', 'live_roa_diff'],
+
+    // Lógica de Reflejo en tiempo real
+    const rs = document.getElementById('razon_social');
+    const cuit = document.getElementById('cuit');
+    const act = document.getElementById('actividad');
+    const sec = document.getElementById('sector');
+
+    if (rs) {
+        document.getElementById('reflect_razon_social').textContent = rs.value || '-';
+        const bannerH1 = document.getElementById('banner_razon_social');
+        if(bannerH1) bannerH1.textContent = rs.value || 'NUEVA EMPRESA';
+    }
+    if (cuit) {
+        document.getElementById('reflect_cuit').textContent = cuit.value || '-';
+        const bannerCuit = document.getElementById('banner_cuit');
+        if(bannerCuit) bannerCuit.textContent = cuit.value || '-';
+    }
+    if (act) document.getElementById('reflect_actividad').textContent = act.value || '-';
+    if (sec) document.getElementById('reflect_sector').textContent = sec.value || '-';
+
+    // Variaciones porcentuales
+    const fields = [
+        'disponibilidades', 'activo_corriente', 'activo_no_corriente', 'activo_total',
+        'pasivo_corriente', 'pasivo_no_corriente', 'pasivo_total', 'patrimonio_neto',
+        'deuda_financiera', 'ventas', 'resultado_operativo', 'ebitda',
+        'flujo_caja_operativo', 'variacion_capital_trabajo', 'flujo_caja_generado',
+        'capex', 'dividendos', 'flujo_caja_libre', 'resultado_neto'
     ];
 
-    map.forEach(([key, actualId, comparativoId, diffId]) => {
-        const a = actual[key];
-        const b = comparativo[key];
-        document.getElementById(actualId).textContent = format(a);
-        document.getElementById(comparativoId).textContent = format(b);
-        document.getElementById(diffId).textContent = format(a - b);
+    fields.forEach(f => {
+        const actVal = parseVal('actual_' + f);
+        const compVal = parseVal('comparativo_' + f);
+        const span = document.getElementById('pct_' + f);
+        if (span) {
+            if (Math.abs(compVal) < 0.01) {
+                span.textContent = '-'; span.style.color = 'inherit';
+            } else {
+                const p = ((actVal - compVal) / Math.abs(compVal)) * 100;
+                span.textContent = (p > 0 ? '+' : '') + p.toFixed(1) + '%';
+                span.style.color = p >= 0 ? 'green' : 'red';
+            }
+        }
     });
+
+    // --- Evaluación de Criterios de Aceptación ---
+    const critPn = document.getElementById('crit_pn_status');
+    if (critPn) {
+        if (actual.patrimonio_neto < 0) {
+            critPn.textContent = 'RECHAZADO (PN Negativo)';
+            critPn.style.color = 'red';
+        } else if (actual.patrimonio_neto > 0) {
+            critPn.textContent = 'CUMPLE';
+            critPn.style.color = 'green';
+        } else {
+            critPn.textContent = '-'; critPn.style.color = 'inherit';
+        }
+    }
+
+    const critCt = document.getElementById('crit_ct_status');
+    if (critCt) {
+        if (actual.capital_trabajo < 0 && comparativo.capital_trabajo < 0) {
+            critCt.textContent = 'RECHAZADO (Recurrencia Negativa)';
+            critCt.style.color = 'red';
+        } else if (actual.capital_trabajo !== 0 || comparativo.capital_trabajo !== 0) {
+            critCt.textContent = 'CUMPLE';
+            critCt.style.color = 'green';
+        } else {
+            critCt.textContent = '-'; critCt.style.color = 'inherit';
+        }
+    }
+
+    if (window.comparisonChart) {
+        window.comparisonChart.data.datasets[0].data = [actual.ventas_raw, actual.capital_trabajo, actual.patrimonio_neto];
+        window.comparisonChart.data.datasets[1].data = [comparativo.ventas_raw, comparativo.capital_trabajo, comparativo.patrimonio_neto];
+
+        // Actualizar etiquetas de los datasets con las fechas ingresadas para que la leyenda sea correcta
+        const dateActual = document.getElementById('selected_date').value;
+        const dateComp = document.getElementById('comparativo_date').value;
+        if (dateActual) window.comparisonChart.data.datasets[0].label = dateActual;
+        if (dateComp) window.comparisonChart.data.datasets[1].label = dateComp;
+
+        window.comparisonChart.update();
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Máscara para fechas DD/MM/AAAA
+    document.querySelectorAll('.date-mask').forEach(input => {
+        input.addEventListener('input', (e) => {
+            let v = e.target.value.replace(/\D/g, ''); // Solo números
+            if (v.length > 8) v = v.slice(0, 8);
+            
+            let finalValue = "";
+            if (v.length > 0) finalValue += v.slice(0, 2);
+            if (v.length > 2) finalValue += '/' + v.slice(2, 4);
+            if (v.length > 4) finalValue += '/' + v.slice(4, 8);
+            
+            e.target.value = finalValue;
+        });
+    });
+
+    // Listeners para reflejo
+    const reflectIds = ['razon_social', 'cuit', 'actividad', 'sector', 'descripcion'];
+    reflectIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updateLiveResults);
+    });
+
     document.querySelectorAll('input.numeric').forEach((element) => {
         element.addEventListener('input', updateLiveResults);
         element.addEventListener('blur', () => {
@@ -423,6 +623,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         element.addEventListener('focus', () => {
             element.value = unformatNumber(element.value);
+            if (parseVal(element.id) === 0) element.value = '';
         });
     });
 
@@ -430,33 +631,38 @@ document.addEventListener('DOMContentLoaded', () => {
         element.value = formatNumber(parseVal(element.id));
     });
 
+    const ctx = document.getElementById('comparisonChart').getContext('2d');
+    window.comparisonChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Ventas', 'Cap. Trabajo', 'Patrimonio Neto'],
+            datasets: [
+                {
+                    label: '{{ selected_date | format_date }}',
+                    backgroundColor: '#003366',
+                    data: [0, 0, 0]
+                },
+                {
+                    label: '{{ comparativo_date | format_date }}',
+                    backgroundColor: '#0099ff',
+                    data: [0, 0, 0]
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' } },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { callback: (val) => val.toLocaleString('de-DE') }
+                }
+            }
+        }
+    });
+
     updateLiveResults();
-});
-
-const inputIds = [
-    'actual_activo_corriente',
-    'actual_activo_no_corriente',
-    'actual_pasivo_corriente',
-    'actual_pasivo_no_corriente',
-    'actual_deuda_financiera',
-    'actual_ventas',
-    'actual_ebitda',
-    'actual_resultado_neto',
-    'comparativo_activo_corriente',
-    'comparativo_activo_no_corriente',
-    'comparativo_pasivo_corriente',
-    'comparativo_pasivo_no_corriente',
-    'comparativo_deuda_financiera',
-    'comparativo_ventas',
-    'comparativo_ebitda',
-    'comparativo_resultado_neto',
-];
-
-inputIds.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-        el.addEventListener('input', updateLiveResults);
-    }
 });
 
 window.addEventListener('load', updateLiveResults);

@@ -14,8 +14,8 @@
             {% endfor %}
         </select>
 
-        <label for="anio">Año</label>
-        <input type="number" id="anio" name="anio" value="{{ balance.anio if balance else '' }}" required />
+        <label for="fecha_balance">Fecha de Balance</label>
+        <input type="date" id="fecha_balance" name="fecha_balance" value="{{ balance.fecha_balance if balance else '' }}" required />
 
         <label for="disponibilidades">Disponibilidades</label>
         <input type="number" step="0.01" id="disponibilidades" name="disponibilidades" value="{{ balance.disponibilidades if balance else '0.0' }}" />

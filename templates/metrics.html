@@ -2,10 +2,11 @@
 
 {% block content %}
 <div class="no-pdf" style="margin-bottom: 15px;">
-    <button onclick="exportToPDF('metrics-table-area', 'Reporte_Metricas')">Exportar a PDF</button>
+    <button onclick="exportToPDF('metrics-table-area', 'Reporte_Metricas', 'landscape')">Exportar a PDF</button>
 </div>
 
 <div id="metrics-table-area" class="card">
+    <p class="only-pdf" style="text-align: right; font-size: 0.7rem; margin-bottom: 5px; color: #666;">Fecha de emisión: <span id="current_date_pdf"></span></p>
     <h2>Métricas de Análisis</h2>
 
     <form method="get" action="/metrics" class="no-pdf">
@@ -26,22 +27,22 @@
         <thead>
             <tr>
                 <th>Empresa</th>
-                <th>Año</th>
+                <th>Fecha</th>
                 <th>Current Ratio</th>
                 <th>Debt Ratio</th>
                 <th>EBITDA Margin</th>
-                <th>Return on Assets</th>
+                <th>ROE</th>
             </tr>
         </thead>
         <tbody>
             {% for item in metrics_data %}
             <tr>
                 <td>{{ item.balance.empresa.razon_social }}</td>
-                <td>{{ item.balance.anio }}</td>
+                <td>{{ item.balance.fecha_balance | format_date }}</td>
                 <td>{{ item.metrics.liquidez.Liquidez | format_es(2) }}</td>
                 <td>{{ item.metrics.solvencia['Deuda Financiera/Activos'] | format_es(2) }}</td>
-                <td>{{ item.metrics.ebitda_margin | default(0.0) | format_es(2) }}</td>
-                <td>{{ item.metrics.return_on_assets | default(0.0) | format_es(2) }}</td>
+                <td>{{ item.metrics.rentabilidad['EBITDA%'] | default(0.0) | format_es(2) }}</td>
+                <td>{{ item.metrics.rentabilidad['ROE'] | default(0.0) | format_es(2) }}</td>
             </tr>
             {% endfor %}
         </tbody>
