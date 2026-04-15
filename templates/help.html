@@ -1,78 +1,86 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card" style="max-width: 900px; margin: 20px auto; line-height: 1.6;">
-    <h2>Guía de Uso y Metodología de Scoring</h2>
-    
-    <section>
-        <h3>1. Funcionamiento General</h3>
-        <p>Esta aplicación permite centralizar el análisis de riesgo crediticio. El flujo de trabajo estándar es:</p>
-        <ul>
-            <li><strong>Captura:</strong> Se ingresan los datos de la empresa y los saldos de los Estados Contables (EECC).</li>
-            <li><strong>Comparativa:</strong> El sistema permite cargar un período actual y uno comparativo para analizar variaciones temporales.</li>
-            <li><strong>Automatización:</strong> Los ratios, métricas por segmento y el Scoring se calculan en tiempo real sin necesidad de recargar la página.</li>
-        </ul>
-    </section>
-
-    <section>
-        <h3>2. Criterios de Aceptación (Filtros Hard)</h3>
-        <p>Antes de calcular el Scoring, el sistema evalúa dos criterios críticos que pueden determinar el rechazo inmediato:</p>
-        <ul>
-            <li><strong>Patrimonio Neto Positivo:</strong> Se rechaza si el PN es menor a cero (Insolvencia técnica).</li>
-            <li><strong>Capital de Trabajo:</strong> Se rechaza si el CT es negativo en los dos últimos ejercicios de forma consecutiva (Déficit estructural de liquidez).</li>
-        </ul>
-    </section>
-
-    <section>
-        <h3>3. Metodología del Scoring (Escala 1-10)</h3>
-        <p>El Scoring se calcula mediante una media ponderada de tres pilares fundamentales:</p>
+<div class="container" style="padding: 20px; max-width: 1000px; margin: auto; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+    <div class="card" style="padding: 30px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+        <h1 style="color: var(--primary-color); border-bottom: 2px solid var(--highlight-orange); padding-bottom: 10px; margin-bottom: 20px;">Guía de Metodología y Criterios de Riesgo</h1>
         
-        <h4>A. Liquidez (Peso: 40%)</h4>
-        <p>Evalúa la capacidad de pago a corto plazo y el pulmón operativo.</p>
-        <table style="font-size: 0.85rem;">
-            <tr><th>Indicador</th><th>Rango</th><th>Puntos</th></tr>
-            <tr><td>Liquidez Corriente</td><td> > 1.50 / 1.00</td><td>3.0 / 1.5</td></tr>
-            <tr><td>Cap. Trabajo / Ventas</td><td> > 15% / 5%</td><td>7.0 / 4.0</td></tr>
+        <p style="font-size: 1.1rem; line-height: 1.6; color: #333;">Este sistema de análisis de riesgo crediticio automatiza la evaluación de empresas mediante un motor de reglas financieras y un modelo de scoring ponderado.</p>
+
+        <h2 style="margin-top: 30px; color: var(--primary-color); font-size: 1.4rem; border-left: 5px solid var(--highlight-orange); padding-left: 10px;">1. Criterios de Aceptación (Filtros Hard)</h2>
+        <p>Son validaciones críticas que determinan la viabilidad inmediata de la operación:</p>
+        <table class="accounting-table" style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+            <thead>
+                <tr style="background: var(--header-gray);">
+                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Criterio</th>
+                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Condición</th>
+                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Resultado</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Patrimonio Neto</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">Debe ser un valor positivo (> 0).</td>
+                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545;">Rechazo si PN ≤ 0</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Capital de Trabajo</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">Evaluación de recurrencia negativa en los últimos dos períodos.</td>
+                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545;">Rechazo si CT es negativo recurrente</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Rentabilidad (EBITDA)</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">Suma de EBITDA (Actual + Anterior) representa una pérdida > 50% del PN Actual.</td>
+                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545;">Rechazo automático</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Score NOSIS</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">Puntaje de comportamiento crediticio menor a 200.</td>
+                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545;">Rechazo automático</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Liquidez Operativa</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">Suma de Capital de Trabajo y Flujo de Caja Operativo menor a cero.</td>
+                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545;">Rechazo automático</td>
+                </tr>
+                <tr style="background: #fff5f5;">
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Hard Stop: Solvencia</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">Pérdida de más del 80% del Patrimonio Neto respecto al ejercicio anterior.</td>
+                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545; font-weight: bold;">RECHAZO AUTOMÁTICO</td>
+                </tr>
+            </tbody>
         </table>
 
-        <h4>B. Solvencia (Peso: 30%)</h4>
-        <p>Mide la estructura de capital y el nivel de apalancamiento financiero.</p>
-        <table style="font-size: 0.85rem;">
-            <tr><th>Indicador</th><th>Rango</th><th>Puntos</th></tr>
-            <tr><td>PN / Activos (Solvencia)</td><td> > 40% / 20%</td><td>5.0 / 2.5</td></tr>
-            <tr><td>Deuda Financiera / EBITDA</td><td> < 2.5x / 4.5x</td><td>5.0 / 2.5</td></tr>
+        <h2 style="margin-top: 40px; color: var(--primary-color); font-size: 1.4rem; border-left: 5px solid var(--highlight-orange); padding-left: 10px;">2. Metodología de Scoring (1.0 - 10.0)</h2>
+        <p>El Score Final se compone de cinco pilares estratégicos con ponderaciones específicas (Escala de A a D):</p>
+        <ul style="line-height: 1.8; color: #444;">
+            <li><strong>Liquidez (30%):</strong> Ratio Corriente (AC/PC) y Capital de Trabajo sobre Ventas.</li>
+            <li><strong>Solvencia (25%):</strong> Autofinanciación (PN/Activo) y Cobertura de Deuda (Deuda Financiera/EBITDA).</li>
+            <li><strong>Rentabilidad (20%):</strong> Margen EBITDA, ROE (Actual/Compuesto) y Flujo de Caja Libre sobre Ventas.</li>
+            <li><strong>Trayectoria (10%):</strong> Años de antigüedad desde la fecha de constitución.</li>
+            <li><strong>Score NOSIS (15%):</strong> Comportamiento crediticio externo del titular.</li>
+        </ul>
+
+        <h2 style="margin-top: 40px; color: var(--primary-color); font-size: 1.4rem; border-left: 5px solid var(--highlight-orange); padding-left: 10px;">3. Tabla de Calificaciones</h2>
+        <table class="accounting-table" style="width: 100%; border-collapse: collapse; margin-top: 15px; text-align: center;">
+            <thead>
+                <tr style="background: var(--header-gray);">
+                    <th style="padding: 10px; border: 1px solid #ddd;">Rango</th>
+                    <th style="padding: 10px; border: 1px solid #ddd;">Calificación</th>
+                    <th style="padding: 10px; border: 1px solid #ddd;">Significado</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="background: #e8f5e9;"><td>8.5 - 10.0</td><td><strong>A</strong></td><td style="color: #198754; font-weight: bold;">Excelente</td></tr>
+                <tr style="background: #f1f8e9;"><td>7.0 - 8.4</td><td><strong>B</strong></td><td style="color: #20c997; font-weight: bold;">Muy Bueno</td></tr>
+                <tr style="background: #fff9c4;"><td>5.0 - 6.9</td><td><strong>C</strong></td><td style="color: #f39c12; font-weight: bold;">Aceptable</td></tr>
+                <tr style="background: #ffebee;"><td>0.0 - 4.9</td><td><strong>D</strong></td><td style="color: #dc3545; font-weight: bold;">Rechazado</td></tr>
+            </tbody>
         </table>
 
-        <h4>C. Rentabilidad y Flujo (Peso: 30%)</h4>
-        <p>Analiza la eficiencia operativa y la generación real de caja libre.</p>
-        <table style="font-size: 0.85rem;">
-            <tr><th>Indicador</th><th>Rango</th><th>Puntos</th></tr>
-            <tr><td>EBITDA % (Margen)</td><td> > 15% / 7%</td><td>4.0 / 2.0</td></tr>
-            <tr><td>ROE (Rent. PN)</td><td> > 15% / 5%</td><td>3.0 / 1.5</td></tr>
-            <tr><td>Flujo Libre / Ventas</td><td> > 5% / > 0%</td><td>3.0 / 1.5</td></tr>
-        </table>
-    </section>
-
-    <section>
-        <h3>4. Escala de Calificación</h3>
-        <div style="display: flex; gap: 10px; margin-top: 10px;">
-            <div style="flex: 1; padding: 10px; background: #198754; color: white; border-radius: 4px; text-align: center;">
-                <strong>AAA (8.5 - 10)</strong><br>Excelente
-            </div>
-            <div style="flex: 1; padding: 10px; background: #20c997; color: white; border-radius: 4px; text-align: center;">
-                <strong>AA (7.0 - 8.4)</strong><br>Muy Bueno
-            </div>
-            <div style="flex: 1; padding: 10px; background: #ffc107; color: black; border-radius: 4px; text-align: center;">
-                <strong>A (5.0 - 6.9)</strong><br>Aceptable
-            </div>
-            <div style="flex: 1; padding: 10px; background: #dc3545; color: white; border-radius: 4px; text-align: center;">
-                <strong>C (< 5.0)</strong><br>Riesgo Elevado
-            </div>
+        <div style="margin-top: 30px; padding: 15px; background: #f8f9fa; border-radius: 4px; font-size: 0.9rem; color: #666; border: 1px solid #eee;">
+            <strong>Nota:</strong> El cupo de operación sugerido se calcula dinámicamente utilizando una función sigmoide que ajusta la exposición máxima permitida según la calificación y el tamaño de la empresa (Ventas, EBITDA, Patrimonio).
         </div>
-    </section>
-
-    <div class="no-pdf" style="margin-top: 30px; text-align: center;">
-        <button onclick="window.history.back()" style="background: #6c757d;">Volver al Análisis</button>
     </div>
 </div>
 {% endblock %}

@@ -11,6 +11,7 @@
                 <th>CUIT</th>
                 <th>Sector</th>
                 <th>Balances</th>
+                <th>Estado ML</th>
                 <th>Acciones</th>
             </tr>
         </thead>
@@ -21,6 +22,12 @@
                 <td>{{ empresa.cuit }}</td>
                 <td>{{ empresa.sector or '-' }}</td>
                 <td style="text-align: center;">{{ empresa.balances | length }}</td>
+                <td>
+                    {% if empresa.es_quebrada %}<span style="color: red;">[QUEBRA]</span>{% endif %}
+                    {% if empresa.en_default %}
+                        <span style="color: orange;">[DEFAULT {{ empresa.anio_default or '' }}]</span>
+                    {% endif %}
+                </td>
                 <td>
                     <a href="/companies/{{ empresa.id }}/edit">Editar</a> |
                     <form action="/companies/{{ empresa.id }}/delete" method="post" style="display:inline;">

@@ -20,13 +20,12 @@
             margin: 0; padding: 0; 
             background: var(--bg-crema); 
             color: var(--text-black); 
-            overflow: hidden; 
         }
         header { background: var(--header-gray); color: var(--primary-color); padding: 8px 24px; border-bottom: 2px solid var(--primary-color); display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1); z-index: 100; }
         .logo { height: 50px; }
         nav a { color: var(--primary-color); margin-left: 20px; text-decoration: underline; font-weight: bold; font-size: 0.9rem; }
         nav a:hover { color: var(--text-black); }
-        main { padding: 0; height: calc(100vh - 70px); overflow-y: auto; }
+        main { padding: 0; height: calc(100vh - 70px); overflow: auto; }
         .card { background: var(--white); border: 1px solid var(--header-gray); border-radius: 4px; padding: 20px; margin-bottom: 16px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); }
         table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.9rem; background: var(--white); }
         th, td { padding: 6px 10px; border: 1px solid var(--border-dark); }
@@ -78,7 +77,9 @@
             <a href="/companies">Empresas</a>
             <a href="/balances">Balances</a>
             <a href="/metrics">Métricas</a>
+            <a href="/stats">Estadísticas</a>
             <a href="/help">Ayuda</a>
+            <a href="/tech-docs">Doc. Técnica</a>
         </nav>
     </header>
     <main>

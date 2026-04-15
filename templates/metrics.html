@@ -40,9 +40,9 @@
                 <td>{{ item.balance.empresa.razon_social }}</td>
                 <td>{{ item.balance.fecha_balance | format_date }}</td>
                 <td>{{ item.metrics.liquidez.Liquidez | format_es(2) }}</td>
-                <td>{{ item.metrics.solvencia['Deuda Financiera/Activos'] | format_es(2) }}</td>
-                <td>{{ item.metrics.rentabilidad['EBITDA%'] | default(0.0) | format_es(2) }}</td>
-                <td>{{ item.metrics.rentabilidad['ROE'] | default(0.0) | format_es(2) }}</td>
+                <td>{{ item.metrics.solvencia['Deuda Financiera/Activos'] | format_es(2) }}%</td>
+                <td>{{ item.metrics.rentabilidad['EBITDA%'] | default(0.0) | format_es(2) }}%</td>
+                <td>{{ item.metrics.rentabilidad['ROE'] | default(0.0) | format_es(2) }}%</td>
             </tr>
             {% endfor %}
         </tbody>

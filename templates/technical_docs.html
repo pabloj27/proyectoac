@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container" style="padding: 20px; max-width: 1100px; margin: auto; font-family: 'Segoe UI', sans-serif;">
+    <div class="card" style="padding: 30px; background: white; border-radius: 8px;">
+        <h1 style="color: var(--primary-color); border-bottom: 2px solid var(--highlight-orange);">Documentación Técnica para Desarrolladores</h1>
+        
+        <section style="margin-top: 25px;">
+            <h2>1. Arquitectura del Sistema</h2>
+            <p>La aplicación utiliza el patrón <strong>MVT (Model-View-Template)</strong> basado en <strong>Flask</strong>. El backend gestiona la lógica financiera con una calificación de riesgo en escala <strong>A-D</strong>.</p>
+        </section>
+
+        <section style="margin-top: 25px;">
+            <h2>2. Modelado de Datos (SQLAlchemy)</h2>
+            <p>Se utiliza <strong>SQLAlchemy</strong> como ORM (Object-Relational Mapper). Esto permite interactuar con la base de datos SQLite usando clases de Python en lugar de consultas SQL manuales.</p>
+            <ul>
+                <li><strong>Clase <code>EmpresaDB</code>:</strong> Representa la entidad principal. Almacena CUIT, Razón Social y flags de riesgo (Default/Quiebra).</li>
+                <li><strong>Clase <code>EECCDB</code>:</strong> Representa los Estados Contables. Contiene una relación de clave foránea (<code>ForeignKey</code>) con la empresa. Aquí se guardan los saldos contables y los resultados del scoring.</li>
+                <li><strong>Variable <code>session</code>:</strong> Es el objeto que gestiona la transacción con la base de datos (<code>commit</code>, <code>rollback</code>, <code>add</code>).</li>
+            </ul>
+        </section>
+
+        <section style="margin-top: 25px;">
+            <h2>3. Lógica de Negocio y Scoring</h2>
+            <p>El núcleo del análisis reside en dos funciones principales en <code>app.py</code>:</p>
+            <ul>
+                <li><strong><code>compute_metrics(balance)</code>:</strong> Toma un objeto de tipo balance y calcula ratios financieros brutos (ROE, Liquidez Corriente, EBITDA%, etc.). Retorna un diccionario estructurado.</li>
+                <li><strong><code>calculate_scoring(metrics, ...)</code>:</strong> Aplica reglas de negocio. Transforma los ratios en puntajes del 0 al 10 basándose en umbrales definidos. Implementa los "Hard Filters" (como el rechazo por pérdida de PN > 80% o EBITDA Negativo Significativo vs PN).</li>
+            </ul>
+        </section>
+
+        <section style="margin-top: 25px;">
+            <h2>4. Integración de IA con LangChain</h2>
+            <p>Para la generación de descripciones automáticas, utilizamos el framework <strong>LangChain</strong>, que facilita la interacción con modelos de Google Gemini.</p>
+            <div style="background: #f4f4f4; padding: 15px; border-left: 5px solid #28a745; font-family: monospace;">
+                <strong>Componentes utilizados:</strong><br>
+                - <strong>ChatGoogleGenerativeAI:</strong> La interfaz que conecta con el modelo <code>gemini-2.5-flash</code>.<br>
+                - <strong>ChatPromptTemplate:</strong> Define la "personalidad" del analista y estructura la instrucción (prompt) para asegurar respuestas consistentes.<br>
+                - <strong>StrOutputParser:</strong> Limpia la respuesta del modelo para entregar texto plano al frontend.<br>
+                - <strong>Chains (LCEL):</strong> Usamos el operador <code>|</code> para canalizar el prompt hacia el modelo y luego al parser (<code>prompt | llm | parser</code>).
+            </div>
+        </section>
+
+        <section style="margin-top: 25px;">
+            <h2>5. Librerías Principales</h2>
+            <table class="accounting-table">
+                <thead>
+                    <tr>
+                        <th>Librería</th>
+                        <th>Uso en el Proyecto</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Flask</strong></td>
+                        <td>Servidor web, manejo de rutas (URL) y renderizado de plantillas.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>SQLAlchemy</strong></td>
+                        <td>Abstracción de la base de datos y gestión de relaciones 1-N.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>LangChain</strong></td>
+                        <td>Orquestación de la IA y gestión de Prompts.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>python-dotenv</strong></td>
+                        <td>Seguridad: Carga de claves de API desde el archivo <code>.env</code>.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>CSV / IO</strong></td>
+                        <td>Generación dinámica de reportes descargables para Machine Learning.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section style="margin-top: 25px;">
+            <h2>6. Variables de Entorno Críticas</h2>
+            <p>El sistema requiere configuraciones externas para funcionar correctamente:</p>
+            <ul>
+                <li><code>GOOGLE_API_KEY</code>: Necesaria para que LangChain pueda autenticarse con los servicios de Google AI Studio.</li>
+            </ul>
+        </section>
+    </div>
+</div>
+{% endblock %}

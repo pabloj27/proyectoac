@@ -13,6 +13,9 @@ class EmpresaDB(Base):
     sector = Column(String)
     anio_fundacion = Column(Integer)
     descripcion = Column(Text)
+    es_quebrada = Column(Integer, default=0) # 0: No, 1: Si
+    en_default = Column(Integer, default=0)  # 0: No, 1: Si
+    anio_default = Column(Integer)
     
     # Relación 1 a N con los Estados Contables
     balances = relationship("EECCDB", back_populates="empresa", cascade="all, delete-orphan")
@@ -37,10 +40,22 @@ class EECCDB(Base):
     ebitda = Column(Float, default=0.0)
     resultado_neto = Column(Float, default=0.0)
     flujo_caja_operativo = Column(Float, default=0.0)
+    nosis_score = Column(Integer, default=0)
     variacion_capital_trabajo = Column(Float, default=0.0)
     capex = Column(Float, default=0.0)
     dividendos = Column(Float, default=0.0)
     analisis = Column(Text)
+
+    # Persistencia de Scoring para ML
+    score_solvencia = Column(Float, default=0.0)
+    score_liquidez = Column(Float, default=0.0)
+    score_rentabilidad = Column(Float, default=0.0)
+    score_antiguedad = Column(Float, default=0.0)
+    score_nosis = Column(Float, default=0.0)
+    score_total = Column(Float, default=0.0)
+    score_label = Column(String)
+    cupo_sugerido = Column(Float, default=0.0)
+    multiplo_sugerido = Column(Float, default=0.0)
     # ... (resto de las métricas contables) ...
 
     # Relación inversa
@@ -63,6 +78,14 @@ def _ensure_sqlite_schema(engine):
             existing_columns_emp = {row[1] for row in result.fetchall()}
             if existing_columns_emp and 'sector' not in existing_columns_emp:
                 conn.execute(text("ALTER TABLE empresas ADD COLUMN sector TEXT DEFAULT ''"))
+            if 'es_quebrada' not in existing_columns_emp:
+                conn.execute(text("ALTER TABLE empresas ADD COLUMN es_quebrada INTEGER DEFAULT 0"))
+            if 'en_default' not in existing_columns_emp:
+                conn.execute(text("ALTER TABLE empresas ADD COLUMN en_default INTEGER DEFAULT 0"))
+            if 'anio_default' not in existing_columns_emp:
+                conn.execute(text("ALTER TABLE empresas ADD COLUMN anio_default INTEGER"))
+            if 'anio_fundacion' not in existing_columns_emp:
+                conn.execute(text("ALTER TABLE empresas ADD COLUMN anio_fundacion INTEGER DEFAULT 0"))
 
             result = conn.execute(text('PRAGMA table_info(estados_contables)'))
             existing_columns = {row[1] for row in result.fetchall()}
@@ -78,6 +101,7 @@ def _ensure_sqlite_schema(engine):
                     'pasivo_no_corriente': 'FLOAT',
                     'deuda_financiera': 'FLOAT',
                     'ebitda': 'FLOAT',
+                    'nosis_score': 'INTEGER',
                     'ventas': 'FLOAT',
                     'resultado_operativo': 'FLOAT',
                     'resultado_neto': 'FLOAT',
@@ -85,6 +109,15 @@ def _ensure_sqlite_schema(engine):
                     'variacion_capital_trabajo': 'FLOAT',
                     'capex': 'FLOAT',
                     'dividendos': 'FLOAT',
+                    'score_solvencia': 'FLOAT',
+                    'score_liquidez': 'FLOAT',
+                    'score_rentabilidad': 'FLOAT',
+                    'score_antiguedad': 'FLOAT',
+                    'score_nosis': 'FLOAT',
+                    'score_total': 'FLOAT',
+                    'score_label': 'TEXT',
+                    'cupo_sugerido': 'FLOAT',
+                    'multiplo_sugerido': 'FLOAT',
                     'analisis': 'TEXT',
                 }
 
