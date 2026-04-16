@@ -266,16 +266,20 @@
                     <h3>Criterio de Aceptación</h3>
                     <div style="font-size: 0.8rem; margin-bottom: 15px;">
                         <div style="display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #eee;">
-                            <span><strong>Patrimonio Neto Positivo:</strong></span>
+                            <span><strong>Solvencia (PN < 0 o PN/Act < 5%):</strong></span>
                             <span id="crit_pn_status" style="font-weight: bold;">-</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #eee;">
-                            <span><strong>Cap. Trabajo (No recurrente negativo):</strong></span>
-                            <span id="crit_ct_status" style="font-weight: bold;">-</span>
+                            <span><strong>Liquidez Ácida (Min 0.30):</strong></span>
+                            <span id="crit_acid_status" style="font-weight: bold;">-</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #eee;">
-                            <span><strong>Rentabilidad (EBITDA):</strong></span>
-                            <span id="crit_roe_status" style="font-weight: bold;">-</span>
+                            <span><strong>Endeudamiento (Deuda/EBITDA > 5x):</strong></span>
+                            <span id="crit_debt_ebitda_status" style="font-weight: bold;">-</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #eee;">
+                            <span><strong>Res. Operativo (EBIT < 0 recurrente):</strong></span>
+                            <span id="crit_ebit_status" style="font-weight: bold;">-</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #eee;">
                             <span><strong>Score NOSIS (Min 200):</strong></span>
@@ -358,6 +362,11 @@
                                 <td><input type="text" inputmode="decimal" class="numeric" id="actual_disponibilidades" name="actual_disponibilidades" value="{{ actual_balance.disponibilidades if actual_balance else '0.0' }}"></td>
                                 <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_disponibilidades" name="comparativo_disponibilidades" value="{{ comparativo_balance.disponibilidades if comparativo_balance else '0.0' }}"></td>
                                 <td id="pct_disponibilidades" class="pct-var">-</td>
+                            </tr>
+                            <tr><td>Bienes de Cambio</td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="actual_bienes_de_cambio" name="actual_bienes_de_cambio" value="{{ actual_balance.bienes_de_cambio if actual_balance else '0.0' }}"></td>
+                                <td><input type="text" inputmode="decimal" class="numeric" id="comparativo_bienes_de_cambio" name="comparativo_bienes_de_cambio" value="{{ comparativo_balance.bienes_de_cambio if comparativo_balance else '0.0' }}"></td>
+                                <td id="pct_bienes_de_cambio" class="pct-var">-</td>
                             </tr>
                             <tr><td>Activo Corriente</td>
                                 <td><input type="text" inputmode="decimal" class="numeric" id="actual_activo_corriente" name="actual_activo_corriente" value="{{ actual_balance.activo_corriente if actual_balance else '0.0' }}"></td>
@@ -636,11 +645,13 @@ function safeDivide(num, den) {
 
 function computeRatioData(prefix) {
     const activoCorriente = parseVal(prefix + 'activo_corriente');
+    const bienesDeCambio = parseVal(prefix + 'bienes_de_cambio');
     const activoNoCorriente = parseVal(prefix + 'activo_no_corriente');
     const pasivoCorrienteInput = parseVal(prefix + 'pasivo_corriente');
     const pasivoCorriente = Math.max(pasivoCorrienteInput, 1.0);
     const deudaFinanciera = parseVal(prefix + 'deuda_financiera');
     const ventas = Math.max(parseVal(prefix + 'ventas'), 1.0);
+    const ebit = parseVal(prefix + 'resultado_operativo');
     const ebitda = parseVal(prefix + 'ebitda');
     const resultadNetoTotal = parseVal(prefix + 'resultado_neto');
     const assetSum = activoCorriente + activoNoCorriente;
@@ -671,6 +682,7 @@ function computeRatioData(prefix) {
 
     const ratios = {
         current_ratio: safeDivide(activoCorriente, pasivoCorrienteInput),
+        acid_test: safeDivide(activoCorriente - bienesDeCambio, pasivoCorrienteInput),
         debt_ratio: (safeDivide(deudaFinanciera, assetSum) * 100),
         ebitda_margin: safeDivide(ebitda, ventas) * 100,
         return_on_assets: safeDivide(resultadNetoTotal, totalActivo),
@@ -682,6 +694,7 @@ function computeRatioData(prefix) {
         pn_activos: safeDivide(patrimonioNeto, assetSum) * 100,
         deuda_ebitda: safeDivide(deudaFinanciera, ebitda),
         ventas_raw: parseVal(prefix + 'ventas'),
+        ebit_raw: ebit,
         ebitda_raw: ebitda,
         patrimonio_neto: patrimonioNeto
     };
@@ -746,22 +759,17 @@ function updateLiveResults() {
     let liveScore = (s_liq * 0.30) + (s_sol * 0.25) + (s_rent * 0.20) + (s_age * 0.10) + (s_nos * 0.15);
     let isHardStop = false;
 
-    // --- Evaluación de Hard Stops (No afectan liveScore) ---
-    if (comparativo && comparativo.patrimonio_neto > 0) {
-        if (actual.patrimonio_neto < (comparativo.patrimonio_neto * 0.20)) {
-            isHardStop = true;
-        }
-    }
-    const eb_act_val = parseVal('actual_ebitda');
-    const eb_ant_val = parseVal('comparativo_ebitda');
-    const pn_act_val = parseVal('actual_patrimonio_neto');
-    if (pn_act_val > 0 && safeDivide(eb_act_val + eb_ant_val, pn_act_val) < -0.5) {
+    // --- Evaluación de Hard Stops (Nuevos criterios) ---
+    if (actual.patrimonio_neto < 0 || actual.pn_activos < 5.0) {
         isHardStop = true;
     }
-    if (nosis > 0 && nosis < 200) {
+    if (actual.acid_test < 0.30) {
         isHardStop = true;
     }
-    if ((actual.capital_trabajo + parseVal('actual_flujo_caja_operativo')) < 0) {
+    if (actual.deuda_ebitda > 5.0) {
+        isHardStop = true;
+    }
+    if (actual.ebit_raw < 0 && comparativo.ebit_raw < 0) {
         isHardStop = true;
     }
 
@@ -794,7 +802,7 @@ function updateLiveResults() {
 
     // Variaciones porcentuales
     const fields = [
-        'disponibilidades', 'activo_corriente', 'activo_no_corriente', 'activo_total',
+        'disponibilidades', 'bienes_de_cambio', 'activo_corriente', 'activo_no_corriente', 'activo_total',
         'pasivo_corriente', 'pasivo_no_corriente', 'pasivo_total', 'patrimonio_neto',
         'deuda_financiera', 'ventas', 'resultado_operativo', 'ebitda',
         'flujo_caja_operativo', 'variacion_capital_trabajo', 'flujo_caja_generado', 'nosis_score',
@@ -819,13 +827,10 @@ function updateLiveResults() {
     // --- Evaluación de Criterios de Aceptación ---
     const critPn = document.getElementById('crit_pn_status');
     if (critPn) {
-        if (actual.patrimonio_neto < 0) {
-            critPn.textContent = 'RECHAZADO (PN Negativo)';
+        if (actual.patrimonio_neto < 0 || actual.pn_activos < 5.0) {
+            critPn.textContent = 'RECHAZADO';
             critPn.style.color = 'red';
-        } else if (comparativo.patrimonio_neto > 0 && actual.patrimonio_neto < (comparativo.patrimonio_neto * 0.20)) {
-            critPn.textContent = 'RECHAZADO (Pérdida PN > 80%)';
-            critPn.style.color = 'red';
-        } else if (actual.patrimonio_neto > 0) {
+        } else if (actual.patrimonio_neto !== 0) {
             critPn.textContent = 'CUMPLE';
             critPn.style.color = 'green';
         } else {
@@ -833,31 +838,36 @@ function updateLiveResults() {
         }
     }
 
-    const critCt = document.getElementById('crit_ct_status');
-    if (critCt) {
-        if (actual.capital_trabajo < 0 && comparativo.capital_trabajo < 0) {
-            critCt.textContent = 'RECHAZADO (Recurrencia Negativa)';
-            critCt.style.color = 'red';
-        } else if (actual.capital_trabajo !== 0 || comparativo.capital_trabajo !== 0) {
-            critCt.textContent = 'CUMPLE';
-            critCt.style.color = 'green';
+    const critAcid = document.getElementById('crit_acid_status');
+    if (critAcid) {
+        if (actual.acid_test < 0.30) {
+            critAcid.textContent = 'RECHAZADO (< 0.30)';
+            critAcid.style.color = 'red';
+        } else if (actual.activo_corriente !== 0) {
+            critAcid.textContent = 'CUMPLE';
+            critAcid.style.color = 'green';
+        } else { critAcid.textContent = '-'; }
+    }
+
+    const critDebt = document.getElementById('crit_debt_ebitda_status');
+    if (critDebt) {
+        if (actual.deuda_ebitda > 5.0) {
+            critDebt.textContent = 'RECHAZADO (> 5x)';
+            critDebt.style.color = 'red';
         } else {
-            critCt.textContent = '-'; critCt.style.color = 'inherit';
+            critDebt.textContent = 'CUMPLE';
+            critDebt.style.color = 'green';
         }
     }
 
-    const critRoe = document.getElementById('crit_roe_status');
-    if (critRoe) {
-        const eb_act = parseVal('actual_ebitda');
-        const eb_ant = parseVal('comparativo_ebitda');
-        const pn_act_val = parseVal('actual_patrimonio_neto');
-
-        if (pn_act_val > 0 && safeDivide(eb_act + eb_ant, pn_act_val) < -0.5) {
-            critRoe.textContent = 'RECHAZADO (EBITDA Neg. > 50% PN)';
-            critRoe.style.color = 'red';
+    const critEbit = document.getElementById('crit_ebit_status');
+    if (critEbit) {
+        if (actual.ebit_raw < 0 && comparativo.ebit_raw < 0) {
+            critEbit.textContent = 'RECHAZADO (EBIT Recurrente < 0)';
+            critEbit.style.color = 'red';
         } else {
-            critRoe.textContent = 'CUMPLE';
-            critRoe.style.color = 'green';
+            critEbit.textContent = 'CUMPLE';
+            critEbit.style.color = 'green';
         }
     }
 

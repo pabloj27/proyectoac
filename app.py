@@ -3,8 +3,9 @@ import math
 import io
 import os
 from datetime import date, datetime
+from functools import wraps
 
-from flask import Flask, redirect, render_template, request, url_for, make_response, jsonify
+from flask import Flask, redirect, render_template, request, url_for, make_response, jsonify, session as flask_session
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -17,6 +18,30 @@ from Base import EECCDB, EmpresaDB, session
 load_dotenv()
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "pzamora_roca_3312_key")
+
+# Decorador para proteger rutas
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not flask_session.get("logged_in"):
+            return redirect(url_for("login", next=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        if request.form.get("username") == "pzamora" and request.form.get("password") == "Roca3312":
+            flask_session["logged_in"] = True
+            return redirect(request.args.get("next") or url_for("index"))
+        return render_template("login.html", error="Usuario o contraseña incorrectos")
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    flask_session.pop("logged_in", None)
+    return redirect(url_for("login"))
 
 @app.teardown_appcontext
 def shutdown_session(exception=None):
@@ -110,6 +135,7 @@ def compute_metrics(balance: EECCDB) -> dict:
     liquidez = {
         "Capital de Trabajo": round(capital_trabajo, 2),
         "Liquidez": round(safe_division(balance.activo_corriente, pasivo_corriente), 2),
+        "Prueba Ácida": round(safe_division(balance.activo_corriente - balance.bienes_de_cambio, pasivo_corriente), 2),
         "Disponibilidades/Deuda Financiera": round(safe_division(balance.disponibilidades, deuda_financiera), 2),
         "Capital de Trabajo / Ventas": round(safe_division(capital_trabajo, ventas) * 100, 2),
     }
@@ -133,6 +159,7 @@ def compute_metrics(balance: EECCDB) -> dict:
         "patrimonio_neto": patrimonio_neto,
         "ebitda_raw": balance.ebitda,
         "resultado_neto": balance.resultado_neto,
+        "resultado_operativo": balance.resultado_operativo,
         "flujo_caja_operativo_raw": balance.flujo_caja_operativo,
         "otros": {
             "Antigüedad (años)": date.today().year - (balance.empresa.anio_fundacion or date.today().year),
@@ -165,7 +192,7 @@ def calculate_suggested_limit(equity: float, score: float) -> tuple:
 
     return equity * factor, factor
 
-def calculate_scoring(metrics: dict, prev_result: float = 0.0, prev_equity: float = None, prev_ebitda: float = 0.0) -> dict:
+def calculate_scoring(metrics: dict, prev_result: float = 0.0, prev_equity: float = None, prev_ebitda: float = 0.0, prev_ebit: float = 0.0) -> dict:
     if not metrics: return {}
     
     # --- 1. LIQUIDEZ (Peso 40%) ---
@@ -227,19 +254,30 @@ def calculate_scoring(metrics: dict, prev_result: float = 0.0, prev_equity: floa
     # --- EVALUACIÓN DE HARD STOPS (No afectan el puntaje numérico) ---
     has_hard_stop = False
     
-    # 1. Pérdida > 80% del Patrimonio Neto
-    if prev_equity is not None and prev_equity > 0:
-        pn_actual = metrics.get('patrimonio_neto', 0.0)
-        if pn_actual < (prev_equity * 0.20):
-            has_hard_stop = True
+    pn_actual = metrics.get('patrimonio_neto', 0.0)
+    activo_total = pn_actual + (metrics.get('solvencia', {}).get('PN/Activos', 0) / 100 if pn_actual != 0 else 1) # Simplificado para el ejemplo
+    # En la realidad usamos el valor real de activos que calculamos en compute_metrics
+    # 1. Patrimonio neto negativo o técnicamente quebrado (PN < 0 o PN/Activo < 5%)
+    pn_sobre_activo = metrics['solvencia']['PN/Activos']
+    if pn_actual < 0 or pn_sobre_activo < 5.0:
+        has_hard_stop = True
 
-    # 2. EBITDA Negativo Significativo vs PN (> 50%)
-    ebitda_act = metrics.get('ebitda_raw', 0.0)
-    pn_act = metrics.get('patrimonio_neto', 0.0)
-    if pn_act > 0 and safe_division(ebitda_act + prev_ebitda, pn_act) < -0.5:
-            has_hard_stop = True
+    # 2. Incapacidad de pago inmediato (Liquidez Ácida < 0.30)
+    prueba_acida = metrics['liquidez']['Prueba Ácida']
+    if prueba_acida < 0.30:
+        has_hard_stop = True
 
-    # 3. Score NOSIS menor a 200
+    # 3. Endeudamiento estructural insostenible (Deuda Financiera / EBITDA > 5x)
+    deuda_ebitda = metrics['solvencia']['Deuda Financiera/EBITDA']
+    if deuda_ebitda > 5.0:
+        has_hard_stop = True
+
+    # 4. Resultado operativo negativo sostenido (EBIT < 0 en últimos 2 años)
+    ebit_actual = metrics.get('resultado_operativo', 0.0)
+    if ebit_actual < 0 and prev_ebit < 0:
+        has_hard_stop = True
+
+    # 5. Score NOSIS menor a 200 (Se mantiene como criterio de integridad)
     if 0 < nos < 200:
         has_hard_stop = True
 
@@ -304,6 +342,7 @@ def variation_label(actual: float, comparativo: float) -> str:
 
 
 @app.route("/")
+@login_required
 def index():
     return render_template("index.html")
 
@@ -392,6 +431,7 @@ def generate_description():
 
 
 @app.route("/entry", methods=["GET", "POST"])
+@login_required
 def entry():
     try:
         companies = session.query(EmpresaDB).order_by(EmpresaDB.razon_social).all()
@@ -542,6 +582,7 @@ def entry():
                     actual_balance = EECCDB(fecha_balance=sel_date, empresa=selected_company)
                 actual_balance.anio = sel_date.year
                 actual_balance.disponibilidades = parse_float(request.form.get("actual_disponibilidades", "0.0"))
+                actual_balance.bienes_de_cambio = parse_float(request.form.get("actual_bienes_de_cambio", "0.0"))
                 actual_balance.activo_corriente = parse_float(request.form.get("actual_activo_corriente", "0.0"))
                 actual_balance.activo_no_corriente = parse_float(request.form.get("actual_activo_no_corriente", "0.0"))
                 actual_balance.pasivo_corriente = parse_float(request.form.get("actual_pasivo_corriente", "0.0"))
@@ -565,9 +606,10 @@ def entry():
                 m_act = compute_metrics(actual_balance)
                 res_ant = comparativo_balance.resultado_neto if comparativo_balance else 0.0
                 eb_ant = comparativo_balance.ebitda if comparativo_balance else 0.0
+                ebit_ant = comparativo_balance.resultado_operativo if comparativo_balance else 0.0
                 m_comp_temp = compute_metrics(comparativo_balance) if comparativo_balance else {}
                 pn_ant = m_comp_temp.get('patrimonio_neto')
-                sc_act = calculate_scoring(m_act, res_ant, pn_ant, eb_ant)
+                sc_act = calculate_scoring(m_act, res_ant, pn_ant, eb_ant, ebit_ant)
                 actual_balance.score_solvencia = sc_act['solvencia']
                 actual_balance.score_liquidez = sc_act['liquidez']
                 actual_balance.score_rentabilidad = sc_act['rentabilidad']
@@ -589,6 +631,7 @@ def entry():
                     comparativo_balance = EECCDB(fecha_balance=comp_date, empresa=selected_company)
                 comparativo_balance.anio = comp_date.year
                 comparativo_balance.disponibilidades = parse_float(request.form.get("comparativo_disponibilidades", "0.0"))
+                comparativo_balance.bienes_de_cambio = parse_float(request.form.get("comparativo_bienes_de_cambio", "0.0"))
                 comparativo_balance.activo_corriente = parse_float(request.form.get("comparativo_activo_corriente", "0.0"))
                 comparativo_balance.activo_no_corriente = parse_float(request.form.get("comparativo_activo_no_corriente", "0.0"))
                 comparativo_balance.pasivo_corriente = parse_float(request.form.get("comparativo_pasivo_corriente", "0.0"))
@@ -678,9 +721,10 @@ def entry():
         
         prev_res = prev_b.resultado_neto if prev_b else 0.0
         prev_eb = prev_b.ebitda if prev_b else 0.0
+        prev_ebit_val = prev_b.resultado_operativo if prev_b else 0.0
         prev_eq = compute_metrics(prev_b).get('patrimonio_neto') if prev_b else None
         
-        actual_scoring = calculate_scoring(actual_metrics, prev_res, prev_eq, prev_eb)
+        actual_scoring = calculate_scoring(actual_metrics, prev_res, prev_eq, prev_eb, prev_ebit_val)
     else:
         actual_scoring = {}
 

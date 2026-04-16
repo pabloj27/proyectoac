@@ -30,6 +30,7 @@ class EECCDB(Base):
     
     # Cuentas del Balance General
     disponibilidades = Column(Float, default=0.0)
+    bienes_de_cambio = Column(Float, default=0.0)
     activo_corriente = Column(Float, default=0.0)
     activo_no_corriente = Column(Float, default=0.0)
     pasivo_corriente = Column(Float, default=0.0)
@@ -95,6 +96,7 @@ def _ensure_sqlite_schema(engine):
                     'fecha_balance': 'DATE',
                     'anio': 'INTEGER',
                     'disponibilidades': 'FLOAT',
+                    'bienes_de_cambio': 'FLOAT',
                     'activo_corriente': 'FLOAT',
                     'activo_no_corriente': 'FLOAT',
                     'pasivo_corriente': 'FLOAT',

@@ -19,34 +19,29 @@
             </thead>
             <tbody>
                 <tr>
-                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Patrimonio Neto</strong></td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">Debe ser un valor positivo (> 0).</td>
-                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545;">Rechazo si PN ≤ 0</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Solvencia Crítica</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">PN < 0 (Quiebra técnica) o PN / Activo Total < 5%.</td>
+                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545;">Rechazo Directo</td>
                 </tr>
                 <tr>
-                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Capital de Trabajo</strong></td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">Evaluación de recurrencia negativa en los últimos dos períodos.</td>
-                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545;">Rechazo si CT es negativo recurrente</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Liquidez Ácida</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">(Act. Cte - Bienes de Cambio) / Pasivo Cte < 0.30.</td>
+                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545;">Rechazo por falta de liquidez inmediata</td>
                 </tr>
                 <tr>
-                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Rentabilidad (EBITDA)</strong></td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">Suma de EBITDA (Actual + Anterior) representa una pérdida > 50% del PN Actual.</td>
-                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545;">Rechazo automático</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Endeudamiento Estructural</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">Deuda Financiera / EBITDA > 5x.</td>
+                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545;">Rechazo por apalancamiento insostenible</td>
                 </tr>
                 <tr>
-                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Score NOSIS</strong></td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">Puntaje de comportamiento crediticio menor a 200.</td>
-                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545;">Rechazo automático</td>
-                </tr>
-                <tr>
-                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Liquidez Operativa</strong></td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">Suma de Capital de Trabajo y Flujo de Caja Operativo menor a cero.</td>
-                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545;">Rechazo automático</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>EBIT Recurrente</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">Resultado Operativo (EBIT) < 0 durante 2 años consecutivos.</td>
+                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545;">Rechazo por inviabilidad operativa</td>
                 </tr>
                 <tr style="background: #fff5f5;">
-                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Hard Stop: Solvencia</strong></td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">Pérdida de más del 80% del Patrimonio Neto respecto al ejercicio anterior.</td>
-                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545; font-weight: bold;">RECHAZO AUTOMÁTICO</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Score NOSIS</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">Puntaje de comportamiento crediticio menor a 200 puntos.</td>
+                    <td style="padding: 10px; border: 1px solid #ddd; color: #dc3545; font-weight: bold;">RECHAZO DIRECTO</td>
                 </tr>
             </tbody>
         </table>
