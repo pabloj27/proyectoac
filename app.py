@@ -957,4 +957,5 @@ def stats():
     return render_template("stats.html", stats=stats_summary, target_stats=target_stats)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    debug_mode = os.environ.get("FLASK_DEBUG", "False").lower() in ("true", "1", "t")
+    app.run(debug=debug_mode, host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
