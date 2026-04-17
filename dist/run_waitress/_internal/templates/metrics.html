@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="no-pdf" style="margin-bottom: 15px;">
+    <button onclick="exportToPDF('metrics-table-area', 'Reporte_Metricas', 'landscape')">Exportar a PDF</button>
+</div>
+
+<div id="metrics-table-area" class="card">
+    <p class="only-pdf" style="text-align: right; font-size: 0.7rem; margin-bottom: 5px; color: #666;">Fecha de emisión: <span id="current_date_pdf"></span></p>
+    <h2>Métricas de Análisis</h2>
+
+    <form method="get" action="/metrics" class="no-pdf">
+        <label for="company_id">Filtrar por empresa</label>
+        <select id="company_id" name="company_id">
+            <option value="">Todas las empresas</option>
+            {% for empresa in companies %}
+            <option value="{{ empresa.id }}" {% if selected_company_id == empresa.id %}selected{% endif %}>
+                {{ empresa.razon_social }}
+            </option>
+            {% endfor %}
+        </select>
+        <button type="submit">Filtrar</button>
+    </form>
+
+    {% if metrics_data %}
+    <table>
+        <thead>
+            <tr>
+                <th>Empresa</th>
+                <th>Fecha</th>
+                <th>Current Ratio</th>
+                <th>Debt Ratio</th>
+                <th>EBITDA Margin</th>
+                <th>ROE</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in metrics_data %}
+            <tr>
+                <td>{{ item.balance.empresa.razon_social }}</td>
+                <td>{{ item.balance.fecha_balance | format_date }}</td>
+                <td>{{ item.metrics.liquidez.Liquidez | format_es(2) }}</td>
+                <td>{{ item.metrics.solvencia['Deuda Financiera/Activos'] | format_es(2) }}%</td>
+                <td>{{ item.metrics.rentabilidad['EBITDA%'] | default(0.0) | format_es(2) }}%</td>
+                <td>{{ item.metrics.rentabilidad['ROE'] | default(0.0) | format_es(2) }}%</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No hay balances registrados para calcular métricas.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,4 +1,6 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Text, Date, create_engine, text
+import os
+import sys
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Text, Date, create_engine, text, inspect
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker, scoped_session
 
 Base = declarative_base()
@@ -62,9 +64,48 @@ class EECCDB(Base):
     # Relación inversa
     empresa = relationship("EmpresaDB", back_populates="balances")
 
-# Configuración del motor de base de datos (SQLite para desarrollo local)
-engine = create_engine('sqlite:///riesgo_caucion.db')
-Base.metadata.create_all(engine)
+# Configuración del motor de base de datos
+# Determinamos la ruta absoluta del directorio donde se encuentra este archivo
+if getattr(sys, 'frozen', False):
+    # Si es un ejecutable, usamos la carpeta donde reside el .exe
+    basedir = os.path.dirname(sys.executable)
+else:
+    basedir = os.path.abspath(os.path.dirname(__file__))
+
+db_path = os.path.join(basedir, 'riesgo_caucion.db')
+
+print(f"\n--- CONFIGURACIÓN DE BASE DE DATOS ---", flush=True)
+print(f"DEBUG: Buscando archivo en: {os.path.abspath(db_path)}", flush=True)
+
+if not os.path.exists(db_path):
+    print(f"AVISO: El archivo '{db_path}' no existe físicamente. Se creará uno NUEVO (vacío).", flush=True)
+else:
+    print(f"INFO: Archivo detectado. Tamaño: {os.path.getsize(db_path)} bytes.", flush=True)
+
+try:
+    # Formato de URL robusto para Windows (3 slashes + ruta con /)
+    sqlite_url = f"sqlite:///{os.path.abspath(db_path).replace(os.sep, '/')}"
+    # check_same_thread=False es vital para aplicaciones web (Waitress/Flask) con SQLite
+    engine = create_engine(
+        sqlite_url,
+        connect_args={"check_same_thread": False},
+        pool_pre_ping=True, # Verifica la conexión antes de usarla
+        echo=False
+    )
+    Base.metadata.create_all(engine)
+    
+    # Verificamos si la base de datos tiene datos existentes
+    inspector = inspect(engine)
+    if 'empresas' in inspector.get_table_names():
+        with engine.connect() as conn:
+            count = conn.execute(text("SELECT count(*) FROM empresas")).scalar()
+            print(f"DEBUG: Conexión exitosa. Registros encontrados: {count}", flush=True)
+            if count == 0:
+                print("ALERTA: La tabla de empresas existe pero está VACÍA.", flush=True)
+
+except Exception as e:
+    print(f"ERROR CRÍTICO AL ABRIR DB: {e}", flush=True)
+    sys.exit(1) # Exit if database cannot be initialized
 
 # Asegura que la tabla de estados contables tenga todas las columnas requeridas
 # cuando la base de datos ya existe con un esquema anterior.
@@ -145,8 +186,9 @@ def _ensure_sqlite_schema(engine):
                     conn.execute(
                         text("UPDATE estados_contables SET fecha_balance = '2000-01-01' WHERE fecha_balance = 0.0")
                     )
+        print("DEBUG: Schema migration check completed.")
     except Exception as e:
-        print(f"Error durante la migración de esquema: {e}")
+        print(f"ERROR: Error during schema migration: {e}")
 
 _ensure_sqlite_schema(engine)
 

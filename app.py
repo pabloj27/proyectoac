@@ -2,6 +2,7 @@ import csv
 import math
 import io
 import os
+import sys
 from datetime import date, datetime
 from functools import wraps
 
@@ -15,10 +16,22 @@ from dotenv import load_dotenv
 from Base import EECCDB, EmpresaDB, session
 
 # Cargar variables de entorno desde el archivo .env
-load_dotenv()
+# Esto permite encontrar el .env tanto en desarrollo como dentro del .exe de PyInstaller
+if getattr(sys, 'frozen', False):
+    # Si es un ejecutable, el .env está en la carpeta temporal _MEIPASS
+    bundle_dir = sys._MEIPASS
+    load_dotenv(os.path.join(bundle_dir, '.env'))
+else:
+    load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "pzamora_roca_3312_key")
+
+# Middleware para ver cada petición en la consola (Ayuda a saber si el clic llegó al servidor)
+@app.before_request
+def log_request_info():
+    if not request.path.startswith('/static'):
+        print(f"--> PETICIÓN: {request.method} {request.path}", flush=True)
 
 # Decorador para proteger rutas
 def login_required(f):
@@ -162,7 +175,7 @@ def compute_metrics(balance: EECCDB) -> dict:
         "resultado_operativo": balance.resultado_operativo,
         "flujo_caja_operativo_raw": balance.flujo_caja_operativo,
         "otros": {
-            "Antigüedad (años)": date.today().year - (balance.empresa.anio_fundacion or date.today().year),
+            "Antigüedad (años)": balance.fecha_balance.year - (balance.empresa.anio_fundacion or balance.fecha_balance.year),
             "Score NOSIS": balance.nosis_score or 0
         }
     }
@@ -253,6 +266,7 @@ def calculate_scoring(metrics: dict, prev_result: float = 0.0, prev_equity: floa
     
     # --- EVALUACIÓN DE HARD STOPS (No afectan el puntaje numérico) ---
     has_hard_stop = False
+    hard_stop_reasons = []
     
     pn_actual = metrics.get('patrimonio_neto', 0.0)
     activo_total = pn_actual + (metrics.get('solvencia', {}).get('PN/Activos', 0) / 100 if pn_actual != 0 else 1) # Simplificado para el ejemplo
@@ -261,31 +275,37 @@ def calculate_scoring(metrics: dict, prev_result: float = 0.0, prev_equity: floa
     pn_sobre_activo = metrics['solvencia']['PN/Activos']
     if pn_actual < 0 or pn_sobre_activo < 5.0:
         has_hard_stop = True
+        hard_stop_reasons.append("Patrimonio Neto negativo o Solvencia crítica (PN/Activo < 5%)")
 
     # 2. Incapacidad de pago inmediato (Liquidez Ácida < 0.30)
     prueba_acida = metrics['liquidez']['Prueba Ácida']
     if prueba_acida < 0.30:
         has_hard_stop = True
+        hard_stop_reasons.append("Liquidez Ácida crítica (< 0.30)")
 
     # 3. Endeudamiento estructural insostenible (Deuda Financiera / EBITDA > 5x)
     deuda_ebitda = metrics['solvencia']['Deuda Financiera/EBITDA']
     if deuda_ebitda > 5.0:
         has_hard_stop = True
+        hard_stop_reasons.append("Apalancamiento excesivo (Deuda/EBITDA > 5x)")
 
     # 4. Resultado operativo negativo sostenido (EBIT < 0 en últimos 2 años)
     ebit_actual = metrics.get('resultado_operativo', 0.0)
     if ebit_actual < 0 and prev_ebit < 0:
         has_hard_stop = True
+        hard_stop_reasons.append("Resultado operativo (EBIT) negativo recurrente")
 
     # 5. Score NOSIS menor a 200 (Se mantiene como criterio de integridad)
     if 0 < nos < 200:
         has_hard_stop = True
+        hard_stop_reasons.append("Score NOSIS por debajo del umbral mínimo de integridad (< 200)")
 
     # 4. Liquidez Operativa Crítica (CT + FCO < 0)
     ct = metrics['liquidez']['Capital de Trabajo']
     fco = metrics.get('flujo_caja_operativo_raw', 0.0)
     if (ct + fco) < 0:
         has_hard_stop = True
+        hard_stop_reasons.append("Flujo Operativo + Capital de Trabajo negativo (Liquidez operativa crítica)")
 
     display_score = round(final_score, 1)
     label = "D"
@@ -330,7 +350,8 @@ def calculate_scoring(metrics: dict, prev_result: float = 0.0, prev_equity: floa
         "pn_actual": pn_actual,
         "multiplo": multiplo,
         "label": label,
-        "color": color
+        "color": color,
+        "hard_stops": hard_stop_reasons
     }
 
 def variation_label(actual: float, comparativo: float) -> str:
@@ -428,6 +449,95 @@ def generate_description():
     except Exception as e:
         return jsonify({"error": f"Error de configuración: {str(e)}"}), 500
 
+
+@app.route("/generate_risk_analysis", methods=["POST"])
+@login_required
+def generate_risk_analysis():
+    print("\n--> RECIBIDA PETICIÓN PARA ANÁLISIS DE RIESGO IA", flush=True)
+    data = request.get_json(silent=True) or {}
+    
+    # Extraemos los datos calculados enviados desde el cliente
+    metrics = data.get("metrics") or {}
+    scoring = data.get("scoring") or {}
+    company = data.get("company") or {}
+    balance = data.get("balance") or {}
+    
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        print("ERROR: GOOGLE_API_KEY no encontrada en el entorno.", flush=True)
+        return jsonify({"error": "No se encontró la GOOGLE_API_KEY en el entorno."}), 400
+
+    razon_social = company.get('razon_social') or "Empresa Desconocida"
+    print(f"DEBUG: Generando análisis para {razon_social}...", flush=True)
+
+    try:
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-3-flash-preview",
+            google_api_key=api_key,
+            temperature=0.2
+        )
+
+        hard_stops_text = ", ".join(scoring.get("hard_stops", [])) if scoring.get("hard_stops") else "Sin disparadores de rechazo automático."
+
+        prompt = ChatPromptTemplate.from_template("""
+            Actúa como un Senior Credit Risk Analyst de una calificadora de riesgo global (Moody's / FIX SCR). 
+            Tu tarea es redactar el apartado de "Informe de Riesgo y Conclusiones" basado en los datos financieros provistos.
+
+            DATOS DE LA ENTIDAD:
+            Empresa: {razon_social} | Sector: {sector}
+
+            PERFIL FINANCIERO (ARS):
+            - Ventas: {ventas} | EBITDA: {ebitda} | Resultado Neto: {resultado_neto}
+            - Solvencia (PN/Activo): {solvencia}% | Liquidez Corriente: {liquidez}
+            - Apalancamiento (Deuda/EBITDA): {apalancamiento}x | ROE: {roe}%
+
+            RATING DEL MODELO:
+            - Score: {score}/10 | Calificación: {label}
+            - Alertas Técnicas (Hard Stops): {hard_stops}
+
+            REQUERIMIENTOS DEL INFORME:
+            1. Análisis descriptivo de la situación patrimonial y operativa.
+            2. Identificación explícita de Fortalezas y Debilidades.
+            3. Justificación técnica de los 'Hard Stops' (si existen) o de la calificación asignada, explicando el impacto en la capacidad de repago de deuda financiera y comercial.
+            
+            ESTILO:
+            - Lenguaje técnico-financiero formal y directo.
+            - Máximo 220 palabras.
+            - No incluyas saludos ni frases introductorias.
+        """)
+        
+        from langchain_core.output_parsers import StrOutputParser
+        chain = prompt | llm | StrOutputParser()
+        
+        invoke_data = {
+            "razon_social": razon_social,
+            "sector": company.get('sector') or "N/A",
+            "ventas": balance.get('ventas') or 0,
+            "ebitda": balance.get('ebitda') or 0,
+            "resultado_neto": balance.get('resultado_neto') or 0,
+            "solvencia": metrics.get('solvencia', {}).get('PN/Activos') or 0,
+            "liquidez": metrics.get('liquidez', {}).get('Liquidez') or 0,
+            "apalancamiento": metrics.get('solvencia', {}).get('Deuda Financiera/EBITDA') or 0,
+            "roe": metrics.get('rentabilidad', {}).get('ROE') or 0,
+            "score": scoring.get('total') or 0,
+            "label": scoring.get('label') or "D",
+            "hard_stops": hard_stops_text
+        }
+
+        print(f"DEBUG: Payload para LLM preparado. Hard Stops: {len(scoring.get('hard_stops', []))}", flush=True)
+
+        response = chain.invoke(invoke_data)
+        
+        if response:
+            print(f"SUCCESS: Análisis generado ({len(response)} caracteres).", flush=True)
+            return jsonify({"analysis": response})
+        else:
+            print("WARNING: La IA devolvió una respuesta vacía.", flush=True)
+            return jsonify({"error": "La IA no devolvió contenido."}), 500
+
+    except Exception as e:
+        print(f"ERROR CRÍTICO EN IA: {str(e)}", flush=True)
+        return jsonify({"error": f"Error en generación de análisis: {str(e)}"}), 500
 
 
 @app.route("/entry", methods=["GET", "POST"])
@@ -748,9 +858,18 @@ def entry():
     )
 
 @app.route("/companies")
+@login_required
 def list_companies():
-    companies = session.query(EmpresaDB).order_by(EmpresaDB.razon_social).all()
-    return render_template("companies.html", companies=companies)
+    try:
+        # Forzamos un refresh para evitar datos cacheados
+        session.expire_all()
+        companies = session.query(EmpresaDB).order_by(EmpresaDB.razon_social).all()
+        print(f"DEBUG WEB: Lista de Empresas - {len(companies)} encontradas", flush=True)
+        return render_template("companies.html", companies=companies)
+    except Exception as e:
+        print(f"ERROR WEB en /companies: {str(e)}", flush=True)
+        session.rollback()
+        return render_template("companies.html", companies=[], error=str(e))
 
 
 @app.route("/companies/new", methods=["GET", "POST"])
@@ -830,13 +949,17 @@ def delete_company(company_id):
 
 
 @app.route("/balances")
+@login_required
 def list_balances():
     try:
+        session.expire_all()
         balances = session.query(EECCDB).all()
+        print(f"DEBUG WEB: Lista de Balances - {len(balances)} encontrados", flush=True)
         return render_template("balances.html", balances=balances)
-    except Exception:
+    except Exception as e:
+        print(f"ERROR WEB en /balances: {str(e)}", flush=True)
         session.rollback()
-        return render_template("balances.html", balances=[])
+        return render_template("balances.html", balances=[], error=str(e))
 
 
 @app.route("/balances/new", methods=["GET", "POST"])

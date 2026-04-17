@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Gestión de Empresas y EECC</h1>
+    <p>Usa la aplicación para crear empresas, cargar EECC, ver empresas existentes y generar métricas financieras.</p>
+    <ul>
+        <li>Entrada única: <a href="/entry">Capturar empresa y EECC</a></li>
+        <li>Crear empresa: <a href="/companies/new">Formulario de empresa</a></li>
+        <li>Cargar EECC: <a href="/balances/new">Formulario de balance</a></li>
+        <li>Ver empresas: <a href="/companies">Lista de empresas</a></li>
+        <li>Ver métricas: <a href="/metrics">Métricas financieras</a></li>
+    </ul>
+</div>
+{% endblock %}

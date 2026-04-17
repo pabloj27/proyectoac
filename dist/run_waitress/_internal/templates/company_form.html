@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2>{% if empresa %}Editar Empresa{% else %}Nueva Empresa{% endif %}</h2>
+    {% if message %}
+    <p style="color: red;"><strong>{{ message }}</strong></p>
+    {% endif %}
+    <form action="{% if empresa %}/companies/{{ empresa.id }}/edit{% else %}/companies/new{% endif %}" method="post">
+        <label for="cuit">CUIT</label>
+        <input type="text" id="cuit" name="cuit" value="{{ empresa.cuit if empresa else '' }}" required pattern="\d{11}" maxlength="11" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '');" title="Debe ingresar exactamente 11 números" />
+
+        <label for="razon_social">Razón social</label>
+        <input type="text" id="razon_social" name="razon_social" value="{{ empresa.razon_social if empresa else '' }}" required />
+
+        <label for="actividad">Actividad</label>
+        <input type="text" id="actividad" name="actividad" value="{{ empresa.actividad if empresa else '' }}" />
+
+        <label for="anio_fundacion">Año de fundación</label>
+        <input type="number" id="anio_fundacion" name="anio_fundacion" value="{{ empresa.anio_fundacion if empresa else '' }}" />
+
+        <div style="margin-top: 20px; padding: 15px; background: #fff1f1; border: 1px solid #ffcccc; border-radius: 4px;">
+            <h3 style="margin-top: 0; color: #b91c1c; font-size: 1rem;">Indicadores de Riesgo (ML)</h3>
+            <div style="display: flex; gap: 20px; align-items: center;">
+                <label style="margin-top: 0; display: flex; align-items: center; gap: 5px;">
+                    <input type="checkbox" name="es_quebrada" value="1" {% if empresa and empresa.es_quebrada %}checked{% endif %} style="width: auto;"> ¿Empresa Quebrada?
+                </label>
+                <label style="margin-top: 0; display: flex; align-items: center; gap: 5px;">
+                    <input type="checkbox" name="en_default" value="1" {% if empresa and empresa.en_default %}checked{% endif %} style="width: auto;"> ¿En Default?
+                </label>
+            </div>
+            
+            <div style="margin-top: 10px;">
+                <label for="anio_default" style="margin-top: 0;">Año de Default</label>
+                <input type="number" id="anio_default" name="anio_default" value="{{ empresa.anio_default if empresa else '' }}" placeholder="Ej: 2023" style="width: 200px;" />
+            </div>
+        </div>
+
+        <label for="descripcion">Descripción</label>
+        <textarea id="descripcion" name="descripcion" rows="4">{{ empresa.descripcion if empresa else '' }}</textarea>
+
+        <button type="submit">Guardar Empresa</button>
+    </form>
+</div>
+{% endblock %}

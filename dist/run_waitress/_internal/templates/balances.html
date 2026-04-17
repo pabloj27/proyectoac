@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h2>Balances Cargados</h2>
+        <a href="/export/csv" class="no-pdf" style="padding: 8px 15px; background: #28a745; color: white; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 0.8rem;">📥 Exportar Dataset CSV (Machine Learning)</a>
+    </div>
+    {% if balances %}
+    <div style="margin-bottom: 15px;">
+        <input type="text" id="balanceSearch" onkeyup="filterBalances()" placeholder="Filtrar por nombre de empresa..." style="padding: 8px; width: 300px;">
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Empresa</th>
+                <th>Fecha</th>
+                <th>Ventas</th>
+                <th>EBITDA %</th>
+                <th>Liquidez</th>
+                <th>Nosis</th>
+                <th>Scoring Total</th>
+                <th>Etiqueta ML</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody id="balanceTableBody">
+            {% for balance in balances %}
+            <tr>
+                <td>{{ balance.empresa.razon_social }}</td>
+                <td>{{ balance.fecha_balance | format_date }}</td>
+                <td>{{ balance.ventas | format_es }}</td>
+                <td>{{ (balance.ebitda / (balance.ventas or 1.0) * 100) | round(2) }}%</td>
+                <td>{{ (balance.activo_corriente / (balance.pasivo_corriente or 1.0)) | round(2) }}</td>
+                <td>{{ balance.nosis_score }}</td>
+                <td style="font-weight: bold;">{{ balance.score_total }} ({{ balance.score_label or '-' }})</td>
+                <td>
+                    {% if balance.empresa.es_quebrada %}<span style="color: red; font-weight: bold;">[QUEBRA]</span>{% endif %}
+                    {% if balance.empresa.en_default %}<span style="color: orange; font-weight: bold;">[DEFAULT]</span>{% endif %}
+                </td>
+                <td>
+                    <a href="/entry?company_id={{ balance.empresa_id }}&selected_date={{ balance.fecha_balance }}">Editar</a> |
+                    <form action="/balances/{{ balance.id }}/delete" method="post" style="display:inline;">
+                        <button type="submit" style="background:none;border:none;color:#003366;cursor:pointer;padding:0;">Eliminar</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No hay balances cargados.</p>
+    {% endif %}
+</div>
+
+<script>
+function filterBalances() {
+    const input = document.getElementById('balanceSearch');
+    const filter = input.value.toLowerCase();
+    const rows = document.getElementById('balanceTableBody').getElementsByTagName('tr');
+
+    for (let i = 0; i < rows.length; i++) {
+        const companyName = rows[i].getElementsByTagName('td')[0].textContent || rows[i].getElementsByTagName('td')[0].innerText;
+        rows[i].style.display = companyName.toLowerCase().includes(filter) ? "" : "none";
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2>Resumen Estadístico de Riesgo</h2>
+    <p>Distribución de empresas basada en su calificación de riesgo más reciente.</p>
+
+    <div style="display: flex; gap: 20px; margin-top: 20px;">
+        <div style="flex: 2;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Categoría de Riesgo</th>
+                        <th>Cantidad de Empresas</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in stats %}
+                    <tr>
+                        <td><strong>{{ s.label }}</strong></td>
+                        <td style="text-align: center;">{{ s.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
+            <div class="card" style="background: #fff1f1; border-color: #ffcccc; margin-bottom: 0;">
+                <h3 style="margin-top: 0; color: #b91c1c;">Indicadores de ML</h3>
+                <p style="margin: 5px 0;"><strong>Empresas Quebradas:</strong> {{ target_stats.quebradas or 0 }}</p>
+                <p style="margin: 5px 0;"><strong>Empresas en Default:</strong> {{ target_stats.defaults or 0 }}</p>
+            </div>
+            
+            <div class="card" style="background: #f0f7ff; border-color: #cce3ff;">
+                <h3 style="margin-top: 0; color: #005580;">Total Cartera</h3>
+                {% set total_count = stats | sum(attribute='count') %}
+                <p style="font-size: 1.5rem; font-weight: bold; margin: 10px 0;">{{ total_count }} Empresas</p>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-top: 30px;">
+        <h3>Visualización Rápida</h3>
+        <div style="display: flex; height: 30px; border-radius: 5px; overflow: hidden; border: 1px solid #ccc;">
+            {% for s in stats %}
+                {% set pct = (s.count / (stats | sum(attribute='count')) * 100) if (stats | sum(attribute='count')) > 0 else 0 %}
+                {% set color = "#198754" if "A (Excelente)" == s.label else ("#20c997" if "B (Muy Bueno)" == s.label else ("#ffc107" if "C (Aceptable)" == s.label else "#dc3545")) %}
+                <div style="width: {{ pct }}%; background-color: {{ color }};" title="{{ s.label }}: {{ s.count }}"></div>
+            {% endfor %}
+        </div>
+        <p style="font-size: 0.8rem; color: #666; margin-top: 5px;">* Los colores representan la distribución jerárquica de A (Verde oscuro) hasta D (Rojo).</p>
+    </div>
+</div>
+{% endblock %}

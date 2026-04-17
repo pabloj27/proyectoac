@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2>{% if balance %}Editar EECC{% else %}Cargar EECC{% endif %}</h2>
+    <form action="{% if balance %}/balances/{{ balance.id }}/edit{% else %}/balances/new{% endif %}" method="post">
+        <label for="empresa_id">Empresa</label>
+        <select id="empresa_id" name="empresa_id" required>
+            <option value="">Seleccione una empresa</option>
+            {% for empresa in companies %}
+            <option value="{{ empresa.id }}" {% if balance and balance.empresa_id == empresa.id %}selected{% endif %}>
+                {{ empresa.razon_social }} - {{ empresa.cuit }}
+            </option>
+            {% endfor %}
+        </select>
+
+        <label for="fecha_balance">Fecha de Balance</label>
+        <input type="date" id="fecha_balance" name="fecha_balance" value="{{ balance.fecha_balance if balance else '' }}" required />
+
+        <label for="disponibilidades">Disponibilidades</label>
+        <input type="number" step="0.01" id="disponibilidades" name="disponibilidades" value="{{ balance.disponibilidades if balance else '0.0' }}" />
+
+        <label for="activo_corriente">Activo corriente</label>
+        <input type="number" step="0.01" id="activo_corriente" name="activo_corriente" value="{{ balance.activo_corriente if balance else '0.0' }}" />
+
+        <label for="activo_no_corriente">Activo no corriente</label>
+        <input type="number" step="0.01" id="activo_no_corriente" name="activo_no_corriente" value="{{ balance.activo_no_corriente if balance else '0.0' }}" />
+
+        <label for="pasivo_corriente">Pasivo corriente</label>
+        <input type="number" step="0.01" id="pasivo_corriente" name="pasivo_corriente" value="{{ balance.pasivo_corriente if balance else '0.0' }}" />
+
+        <label for="pasivo_no_corriente">Pasivo no corriente</label>
+        <input type="number" step="0.01" id="pasivo_no_corriente" name="pasivo_no_corriente" value="{{ balance.pasivo_no_corriente if balance else '0.0' }}" />
+
+        <label for="deuda_financiera">Deuda financiera</label>
+        <input type="number" step="0.01" id="deuda_financiera" name="deuda_financiera" value="{{ balance.deuda_financiera if balance else '0.0' }}" />
+
+        <label for="ventas">Ventas</label>
+        <input type="number" step="0.01" id="ventas" name="ventas" value="{{ balance.ventas if balance else '0.0' }}" />
+
+        <label for="resultado_operativo">Resultado operativo</label>
+        <input type="number" step="0.01" id="resultado_operativo" name="resultado_operativo" value="{{ balance.resultado_operativo if balance else '0.0' }}" />
+
+        <label for="ebitda">EBITDA</label>
+        <input type="number" step="0.01" id="ebitda" name="ebitda" value="{{ balance.ebitda if balance else '0.0' }}" />
+
+        <label for="resultado_neto">Resultado neto</label>
+        <input type="number" step="0.01" id="resultado_neto" name="resultado_neto" value="{{ balance.resultado_neto if balance else '0.0' }}" />
+
+        <button type="submit">Guardar EECC</button>
+    </form>
+</div>
+{% endblock %}
