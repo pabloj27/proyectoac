@@ -133,7 +133,7 @@ def compute_metrics(balance: EECCDB) -> dict:
     deuda_financiera = balance.deuda_financiera
     ebitda = max(balance.ebitda, 1.0)
     capital_trabajo = balance.activo_corriente - balance.pasivo_corriente
-    flujo_generado = balance.flujo_caja_operativo + balance.variacion_capital_trabajo
+    flujo_generado = balance.flujo_caja_operativo - balance.variacion_capital_trabajo
     flujo_libre = balance.flujo_caja_operativo - balance.capex - balance.dividendos
     
     total_pasivo = balance.pasivo_corriente + balance.pasivo_no_corriente
@@ -154,7 +154,10 @@ def compute_metrics(balance: EECCDB) -> dict:
     }
 
     flujo_caja = {
-        "Flujo Generado / Ventas": round(safe_division(flujo_generado, ventas) * 100, 2),
+        "Flujo Generado por Operaciones (FGO)": round(flujo_generado, 2),
+        "Cambios en el WC": round(balance.variacion_capital_trabajo, 2),
+        "Flujo de Caja Operativo": round(balance.flujo_caja_operativo, 2),
+        "FGO / Ventas": round(safe_division(flujo_generado, ventas) * 100, 2),
         "Flujo Operativo / Ventas": round(safe_division(balance.flujo_caja_operativo, ventas) * 100, 2),
         "Flujo Libre / Ventas": round(safe_division(flujo_libre, ventas) * 100, 2),
     }
@@ -174,6 +177,10 @@ def compute_metrics(balance: EECCDB) -> dict:
         "resultado_neto": balance.resultado_neto,
         "resultado_operativo": balance.resultado_operativo,
         "flujo_caja_operativo_raw": balance.flujo_caja_operativo,
+        "flujo_generado_raw": flujo_generado,
+        "variacion_wc_raw": balance.variacion_capital_trabajo,
+        "ventas_raw": balance.ventas,
+        "capital_trabajo_raw": capital_trabajo,
         "otros": {
             "Antigüedad (años)": balance.fecha_balance.year - (balance.empresa.anio_fundacion or balance.fecha_balance.year),
             "Score NOSIS": balance.nosis_score or 0
@@ -208,13 +215,22 @@ def calculate_suggested_limit(equity: float, score: float) -> tuple:
 def calculate_scoring(metrics: dict, prev_result: float = 0.0, prev_equity: float = None, prev_ebitda: float = 0.0, prev_ebit: float = 0.0) -> dict:
     if not metrics: return {}
     
-    # --- 1. LIQUIDEZ (Peso 40%) ---
+    # --- 1. LIQUIDEZ (Peso 30%) ---
     liq_val = metrics['liquidez']['Liquidez']
+    acid_val = metrics['liquidez']['Prueba Ácida']
     ct_ventas = metrics['liquidez']['Capital de Trabajo / Ventas']
     
     s_liq = 0
-    s_liq += 7.0 if liq_val > 1.5 else (4.0 if liq_val > 1.1 else (1.5 if liq_val > 1.0 else 0))
-    s_liq += 3.0 if ct_ventas > 10.0 else (1.5 if ct_ventas > 5.0 else 0)
+    if liq_val >= 1.0:
+        # Liquidez Corriente (Max 5.0 pts) - Umbrales relajados
+        s_liq += 5.0 if liq_val > 1.4 else (3.5 if liq_val > 1.15 else 2.0)
+        
+        # Prueba Ácida (Max 3.0 pts) - Inclusión de nuevo método
+        s_liq += 3.0 if acid_val > 1.0 else (2.0 if acid_val > 0.8 else (1.0 if acid_val > 0.5 else 0))
+        
+        # Capital de Trabajo / Ventas (Max 2.0 pts) - Umbrales relajados (8% vs 10%)
+        s_liq += 2.0 if ct_ventas > 8.0 else (1.0 if ct_ventas > 4.0 else 0)
+
     s_liq = min(10.0, s_liq)
     
     # --- 2. SOLVENCIA (Peso 25%) ---
@@ -283,17 +299,11 @@ def calculate_scoring(metrics: dict, prev_result: float = 0.0, prev_equity: floa
         has_hard_stop = True
         hard_stop_reasons.append("Liquidez Ácida crítica (< 0.30)")
 
-    # 3. Endeudamiento estructural insostenible (Deuda Financiera / EBITDA > 5x)
-    deuda_ebitda = metrics['solvencia']['Deuda Financiera/EBITDA']
-    if deuda_ebitda > 5.0:
+    # 4. EBITDA negativo sostenido (EBITDA < 0 en últimos 2 años)
+    ebitda_actual = metrics.get('ebitda_raw', 0.0)
+    if ebitda_actual < 0 and prev_ebitda < 0:
         has_hard_stop = True
-        hard_stop_reasons.append("Apalancamiento excesivo (Deuda/EBITDA > 5x)")
-
-    # 4. Resultado operativo negativo sostenido (EBIT < 0 en últimos 2 años)
-    ebit_actual = metrics.get('resultado_operativo', 0.0)
-    if ebit_actual < 0 and prev_ebit < 0:
-        has_hard_stop = True
-        hard_stop_reasons.append("Resultado operativo (EBIT) negativo recurrente")
+        hard_stop_reasons.append("EBITDA negativo recurrente (Pérdida operativa sostenida)")
 
     # 5. Score NOSIS menor a 200 (Se mantiene como criterio de integridad)
     if 0 < nos < 200:
@@ -326,10 +336,22 @@ def calculate_scoring(metrics: dict, prev_result: float = 0.0, prev_equity: floa
 
     # Cálculo de Cupo Sugerido basado en escalas y PN Actual
     pn_actual = metrics.get('patrimonio_neto', 0.0)
+    ventas_raw = metrics.get('ventas_raw', 0.0)
+    ct_raw = metrics.get('capital_trabajo_raw', 0.0)
+    ebitda_raw = metrics.get('ebitda_raw', 0.0)
+
     if has_hard_stop:
         cupo_sugerido, multiplo = 0.0, 0.0
     else:
-        cupo_sugerido, multiplo = calculate_suggested_limit(pn_actual, display_score)
+        _, multiplo = calculate_suggested_limit(pn_actual, display_score)
+        cupo_patrimonio = max(0, pn_actual * multiplo)
+        cupo_ventas = max(0, ventas_raw * 0.15 * multiplo)
+        cupo_ct = max(0, ct_raw * 0.80 * multiplo)
+        cupo_ebitda = max(0, ebitda_raw * 3.0 * multiplo)
+        
+        # El cupo por operaciones es el promedio del Cupo por Ventas, por CT y por EBITDA
+        cupo_negocio_avg = (cupo_ventas + cupo_ct + cupo_ebitda) / 3
+        cupo_sugerido = min(cupo_patrimonio, cupo_negocio_avg if cupo_negocio_avg > 0 else cupo_patrimonio)
     
     # Logs de depuración en consola para monitorear el cálculo
     print(f"--- DETALLE DE CALCULO CUPO ---")
@@ -405,26 +427,36 @@ def generate_description():
             tools=[{"google_search_retrieval": {}}]
         )
 
+        llm_with_search = llm.bind(
+            tool_config={
+                "function_calling_config": {
+                    "mode": "any",  # O usa "auto" para que el modelo decida cuándo buscar
+                }
+            }
+        )
+
         # Definimos el Prompt Template según lo solicitado
         prompt = ChatPromptTemplate.from_template("""
-            Actúa como un experto analista de riesgo crediticio con acceso a búsqueda en tiempo real.
+            Actúa como un Senior Risk Analyst especializado en Seguros de Caución. 
+            Tu objetivo es redactar un Perfil Operativo y de Riesgo detallado para la empresa
 
             Empresa: {empresa}
             CUIT: {cuit}
             Sector Informado: {sector}
 
             INSTRUCCIONES CRÍTICAS:
-            1. UTILIZA GOOGLE SEARCH para buscar información actualizada sobre esta empresa (CUIT y Nombre) en registros públicos, sitios financieros y noticias de Argentina.
+            Para este análisis, utiliza tu capacidad de búsqueda web para investigar noticias de las últimas 4 semanas que afecten a su sector
+            1. UTILIZA GOOGLE SEARCH para buscar información actualizada sobre esta empresa (CUIT y Nombre), sitios financieros y noticias de Argentina.
             2. Si NO tienes información específica y verificable de esta empresa, NO inventes datos (ubicación, socios, etc.). 
-               En su lugar, describe el perfil operativo y los riesgos típicos para el sector "{sector}" en el contexto económico actual.
             3. Mantén un tono estrictamente profesional y técnico.
+            4. Busca noticias recientes sobre problemas financieros, legales o de reputación que puedan afectar el análisis de riesgo crediticio.
 
             Genera una descripción objetiva incluyendo:
 
             - Actividad principal
             - Grupo empresarial (si aplica)
-            - Ubicación donde opera principalmente
-            - Noticias recientes sobre la empresa(si no hay info, indicar "Sin información pública reciente")
+            - Ubicación donde opera principalmente o tiene sus plantas. 
+            - Noticias recientes sobre la empresa(si no hay info, indicar "Sin información pública reciente"). Proyectos, inversioes, problemas crediticios, concursos.
 
             Formato:
             - Máximo 120 palabras
@@ -435,7 +467,7 @@ def generate_description():
         
         from langchain_core.output_parsers import StrOutputParser
         try:
-            chain = prompt | llm | StrOutputParser()
+            chain = prompt | llm_with_search | StrOutputParser()
             response = chain.invoke({"empresa": razon_social, "cuit": cuit, "sector": sector})
             
             # Al usar StrOutputParser, 'response' ya es un string, no tiene atributo '.content'
@@ -461,6 +493,7 @@ def generate_risk_analysis():
     scoring = data.get("scoring") or {}
     company = data.get("company") or {}
     balance = data.get("balance") or {}
+    print(f"DEBUG IA PAYLOAD: Metrics={metrics.get('flujo_de_caja')}", flush=True)
     
     api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
@@ -490,6 +523,7 @@ def generate_risk_analysis():
             - Ventas: {ventas} | EBITDA: {ebitda} | Resultado Neto: {resultado_neto}
             - Solvencia (PN/Activo): {solvencia}% | Liquidez Corriente: {liquidez}
             - Apalancamiento (Deuda/EBITDA): {apalancamiento}x | ROE: {roe}%
+            - Flujo Generado (FGO): {fgo} | Var. Capital de Trabajo: {variacion_wc} | FCO: {fco}
 
             RATING DEL MODELO:
             - Score: {score}/10 | Calificación: {label}
@@ -519,6 +553,9 @@ def generate_risk_analysis():
             "liquidez": metrics.get('liquidez', {}).get('Liquidez') or 0,
             "apalancamiento": metrics.get('solvencia', {}).get('Deuda Financiera/EBITDA') or 0,
             "roe": metrics.get('rentabilidad', {}).get('ROE') or 0,
+            "fgo": metrics.get('flujo_de_caja', {}).get('Flujo Generado por Operaciones (FGO)', 0),
+            "variacion_wc": metrics.get('flujo_de_caja', {}).get('Cambios en el WC', 0),
+            "fco": metrics.get('flujo_de_caja', {}).get('Flujo de Caja Operativo', 0),
             "score": scoring.get('total') or 0,
             "label": scoring.get('label') or "D",
             "hard_stops": hard_stops_text
@@ -705,6 +742,7 @@ def entry():
                 actual_balance.flujo_caja_operativo = parse_float(request.form.get("actual_flujo_caja_operativo", "0.0"))
                 actual_balance.variacion_capital_trabajo = parse_float(request.form.get("actual_variacion_capital_trabajo", "0.0"))
                 actual_nosis = int(parse_float(request.form.get("actual_nosis_score", "0")))
+                print(f"DEBUG ENTRY: Actual FCO={actual_balance.flujo_caja_operativo}, VarWC={actual_balance.variacion_capital_trabajo}", flush=True)
                 if actual_nosis > 999:
                     raise ValueError("El Score NOSIS actual no puede superar los 999 puntos.")
                 actual_balance.nosis_score = actual_nosis
@@ -753,6 +791,7 @@ def entry():
                 comparativo_balance.resultado_neto = parse_float(request.form.get("comparativo_resultado_neto", "0.0"))
                 comparativo_balance.flujo_caja_operativo = parse_float(request.form.get("comparativo_flujo_caja_operativo", "0.0"))
                 comparativo_balance.variacion_capital_trabajo = parse_float(request.form.get("comparativo_variacion_capital_trabajo", "0.0"))
+                print(f"DEBUG ENTRY: Comparativo FCO={comparativo_balance.flujo_caja_operativo}, VarWC={comparativo_balance.variacion_capital_trabajo}", flush=True)
                 comp_nosis = int(parse_float(request.form.get("comparativo_nosis_score", "0")))
                 if comp_nosis > 999:
                     raise ValueError("El Score NOSIS comparativo no puede superar los 999 puntos.")
@@ -972,16 +1011,20 @@ def balance_form():
             balance = EECCDB(
                 fecha_balance=parse_date(request.form["fecha_balance"]),
                 anio=parse_date(request.form["fecha_balance"]).year if parse_date(request.form["fecha_balance"]) else 0,
-                disponibilidades=float(request.form.get("disponibilidades", 0.0)),
-                activo_corriente=float(request.form.get("activo_corriente", 0.0)),
-                activo_no_corriente=float(request.form.get("activo_no_corriente", 0.0)),
-                pasivo_corriente=float(request.form.get("pasivo_corriente", 0.0)),
-                pasivo_no_corriente=float(request.form.get("pasivo_no_corriente", 0.0)),
-                deuda_financiera=float(request.form.get("deuda_financiera", 0.0)),
-                ventas=float(request.form.get("ventas", 0.0)),
-                resultado_operativo=float(request.form.get("resultado_operativo", 0.0)),
-                ebitda=float(request.form.get("ebitda", 0.0)),
-                resultado_neto=float(request.form.get("resultado_neto", 0.0)),
+                disponibilidades=parse_float(request.form.get("disponibilidades", 0.0)),
+                activo_corriente=parse_float(request.form.get("activo_corriente", 0.0)),
+                activo_no_corriente=parse_float(request.form.get("activo_no_corriente", 0.0)),
+                pasivo_corriente=parse_float(request.form.get("pasivo_corriente", 0.0)),
+                pasivo_no_corriente=parse_float(request.form.get("pasivo_no_corriente", 0.0)),
+                deuda_financiera=parse_float(request.form.get("deuda_financiera", 0.0)),
+                ventas=parse_float(request.form.get("ventas", 0.0)),
+                resultado_operativo=parse_float(request.form.get("resultado_operativo", 0.0)),
+                ebitda=parse_float(request.form.get("ebitda", 0.0)),
+                resultado_neto=parse_float(request.form.get("resultado_neto", 0.0)),
+                variacion_capital_trabajo=parse_float(request.form.get("variacion_capital_trabajo", 0.0)),
+                flujo_caja_operativo=parse_float(request.form.get("flujo_caja_operativo", 0.0)),
+                capex=parse_float(request.form.get("capex", 0.0)),
+                dividendos=parse_float(request.form.get("dividendos", 0.0)),
                 empresa=empresa,
             )
             session.add(balance)
@@ -1007,16 +1050,20 @@ def edit_balance(balance_id):
             balance.fecha_balance = parse_date(request.form["fecha_balance"])
             if balance.fecha_balance:
                 balance.anio = balance.fecha_balance.year
-            balance.disponibilidades = float(request.form.get("disponibilidades", 0.0))
-            balance.activo_corriente = float(request.form.get("activo_corriente", 0.0))
-            balance.activo_no_corriente = float(request.form.get("activo_no_corriente", 0.0))
-            balance.pasivo_corriente = float(request.form.get("pasivo_corriente", 0.0))
-            balance.pasivo_no_corriente = float(request.form.get("pasivo_no_corriente", 0.0))
-            balance.deuda_financiera = float(request.form.get("deuda_financiera", 0.0))
-            balance.ventas = float(request.form.get("ventas", 0.0))
-            balance.resultado_operativo = float(request.form.get("resultado_operativo", 0.0))
-            balance.ebitda = float(request.form.get("ebitda", 0.0))
-            balance.resultado_neto = float(request.form.get("resultado_neto", 0.0))
+            balance.disponibilidades = parse_float(request.form.get("disponibilidades", 0.0))
+            balance.activo_corriente = parse_float(request.form.get("activo_corriente", 0.0))
+            balance.activo_no_corriente = parse_float(request.form.get("activo_no_corriente", 0.0))
+            balance.pasivo_corriente = parse_float(request.form.get("pasivo_corriente", 0.0))
+            balance.pasivo_no_corriente = parse_float(request.form.get("pasivo_no_corriente", 0.0))
+            balance.deuda_financiera = parse_float(request.form.get("deuda_financiera", 0.0))
+            balance.ventas = parse_float(request.form.get("ventas", 0.0))
+            balance.resultado_operativo = parse_float(request.form.get("resultado_operativo", 0.0))
+            balance.ebitda = parse_float(request.form.get("ebitda", 0.0))
+            balance.resultado_neto = parse_float(request.form.get("resultado_neto", 0.0))
+            balance.flujo_caja_operativo = parse_float(request.form.get("flujo_caja_operativo", 0.0))
+            balance.variacion_capital_trabajo = parse_float(request.form.get("variacion_capital_trabajo", 0.0))
+            balance.capex = parse_float(request.form.get("capex", 0.0))
+            balance.dividendos = parse_float(request.form.get("dividendos", 0.0))
             session.commit()
             return redirect(url_for("list_balances"))
         except Exception as e:
@@ -1069,7 +1116,8 @@ def export_csv():
         "CUIT", "Empresa", "Sector", "Antiguedad_Años", "Target_Quebrada", "Target_Default", "Anio_Default",
         "Fecha_Balance", "Disponibilidades", "Activo_C", "Activo_NC", "Pasivo_C", "Pasivo_NC",
         "Ventas", "EBITDA", "Deuda_Fin", "Res_Neto", "ROE_%", "Liquidez_Ratio", "PN_Activo_%",
-        "Score_Solvencia", "Score_Liquidez", "Score_Rentabilidad", "Score_Nosis", "Score_Total"
+        "Score_Solvencia", "Score_Liquidez", "Score_Rentabilidad", "Score_Nosis", "Score_Total",
+        "FCO", "Variacion_WC", "FGO", "Capex", "Dividendos"
     ])
     
     for b in balances:
@@ -1080,8 +1128,10 @@ def export_csv():
             b.fecha_balance, b.disponibilidades, b.activo_corriente, b.activo_no_corriente,
             b.pasivo_corriente, b.pasivo_no_corriente, b.ventas, b.ebitda, b.deuda_financiera,
             b.resultado_neto, m['rentabilidad']['ROE'], m['liquidez']['Liquidez'], 
-            m['solvencia']['PN/Activos'], b.score_solvencia, b.score_liquidez, 
-            b.score_rentabilidad, b.score_nosis, b.score_total
+            m['solvencia']['PN/Activos'], b.score_solvencia, b.score_liquidez,
+            b.score_rentabilidad, b.score_nosis, b.score_total,
+            b.flujo_caja_operativo, b.variacion_capital_trabajo, m['flujo_de_caja']['Flujo Generado por Operaciones (FGO)'],
+            b.capex, b.dividendos
         ])
     
     response = make_response(output.getvalue())

@@ -47,6 +47,18 @@
         <label for="resultado_neto">Resultado neto</label>
         <input type="number" step="0.01" id="resultado_neto" name="resultado_neto" value="{{ balance.resultado_neto if balance else '0.0' }}" />
 
+        <label for="flujo_caja_operativo">Flujo de Caja Operativo</label>
+        <input type="number" step="0.01" id="flujo_caja_operativo" name="flujo_caja_operativo" value="{{ balance.flujo_caja_operativo if balance else '0.0' }}" />
+
+        <label for="variacion_capital_trabajo">Variación de Capital de Trabajo</label>
+        <input type="number" step="0.01" id="variacion_capital_trabajo" name="variacion_capital_trabajo" value="{{ balance.variacion_capital_trabajo if balance else '0.0' }}" />
+
+        <label for="capex">Capex</label>
+        <input type="number" step="0.01" id="capex" name="capex" value="{{ balance.capex if balance else '0.0' }}" />
+
+        <label for="dividendos">Dividendos</label>
+        <input type="number" step="0.01" id="dividendos" name="dividendos" value="{{ balance.dividendos if balance else '0.0' }}" />
+
         <button type="submit">Guardar EECC</button>
     </form>
 </div>
