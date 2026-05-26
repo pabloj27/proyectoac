@@ -9,8 +9,6 @@ from functools import wraps
 from flask import Flask, redirect, render_template, request, url_for, make_response, jsonify, session as flask_session
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 
 from Base import EECCDB, EmpresaDB, session
@@ -24,7 +22,11 @@ if getattr(sys, 'frozen', False):
 else:
     load_dotenv()
 
-app = Flask(__name__)
+if getattr(sys, 'frozen', False):
+    _template_folder = os.path.join(sys._MEIPASS, 'templates')
+    app = Flask(__name__, template_folder=_template_folder)
+else:
+    app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "pzamora_roca_3312_key")
 
 # Middleware para ver cada petición en la consola (Ayuda a saber si el clic llegó al servidor)
@@ -212,7 +214,7 @@ def calculate_suggested_limit(equity: float, score: float) -> tuple:
 
     return equity * factor, factor
 
-def calculate_scoring(metrics: dict, prev_result: float = 0.0, prev_equity: float = None, prev_ebitda: float = 0.0, prev_ebit: float = 0.0) -> dict:
+def calculate_scoring(metrics: dict, prev_result: float = 0.0, prev_equity: float = None, prev_ebitda: float = 0.0, prev_ebit: float = 0.0, prev_ventas: float = 0.0) -> dict:
     if not metrics: return {}
     
     # --- 1. LIQUIDEZ (Peso 30%) ---
@@ -269,17 +271,67 @@ def calculate_scoring(metrics: dict, prev_result: float = 0.0, prev_equity: floa
 
     s_rent += 3.0 if fcf_ventas > 5.0 else (1.5 if fcf_ventas > 0 else 0)
 
+    # Garantía: resultado neto positivo siempre produce score > 5
+    if res_act > 0:
+        s_rent = max(s_rent, 5.5)
+
     # --- 4. ANTIGÜEDAD (Peso 10%) ---
     ant = metrics['otros']['Antigüedad (años)']
     s_age = 10.0 if ant >= 30 else (7.0 if ant >= 10 else (4.0 if ant >= 5 else 0))
 
     # --- 5. NOSIS (Peso 15%) ---
     nos = metrics['otros']['Score NOSIS']
-    s_nos = nos / 100.0
+    # Detectar si el score viene en escala 0-1000 y normalizar a 0-10
+    # Si el valor es > 10.0, se asume escala 1-999 y se divide por 100
+    val_nos = nos / 100.0 if nos > 10.1 else nos
+    s_nos = min(10.0, max(0.0, val_nos))
 
-    # Ponderación Final (Escala 1-10)
-    final_score = (s_liq * 0.30) + (s_sol * 0.25) + (s_rent * 0.20) + (s_age * 0.10) + (s_nos * 0.15)
-    
+    # --- AJUSTE DE TENDENCIA YoY (±1.5 pts) ---
+    ajuste_tendencia = 0.0
+    has_prev_data = bool(prev_ventas or prev_ebitda or (prev_equity is not None and prev_equity != 0))
+
+    if has_prev_data:
+        ventas_act = metrics.get('ventas_raw', 0.0)
+        ebitda_act = metrics.get('ebitda_raw', 0.0)
+        pn_act_val = metrics.get('patrimonio_neto', 0.0)
+
+        if prev_ventas and abs(prev_ventas) > 1e-9:
+            pct_v = (ventas_act - prev_ventas) / abs(prev_ventas) * 100
+            if   pct_v >= 15:  adj_v =  0.50
+            elif pct_v >=  5:  adj_v =  0.25
+            elif pct_v >= -5:  adj_v =  0.0
+            elif pct_v >= -15: adj_v = -0.25
+            else:              adj_v = -0.50
+        else:
+            adj_v = 0.0
+
+        if prev_ebitda and abs(prev_ebitda) > 1e-9:
+            pct_e = (ebitda_act - prev_ebitda) / abs(prev_ebitda) * 100
+            if   pct_e >= 20:  adj_e =  0.50
+            elif pct_e >=  5:  adj_e =  0.25
+            elif pct_e >= -5:  adj_e =  0.0
+            elif pct_e >= -15: adj_e = -0.25
+            else:              adj_e = -0.50
+        else:
+            adj_e = 0.0
+
+        if prev_equity is not None and abs(prev_equity) > 1e-9:
+            pct_pn = (pn_act_val - prev_equity) / abs(prev_equity) * 100
+            if   pct_pn >= 10: adj_pn =  0.50
+            elif pct_pn >=  0: adj_pn =  0.25
+            elif pct_pn >= -5: adj_pn = -0.25
+            else:              adj_pn = -0.50
+        else:
+            adj_pn = 0.0
+
+        ajuste_tendencia = max(-1.5, min(1.5, adj_v + adj_e + adj_pn))
+        print(f"DEBUG TENDENCIA: Ventas={adj_v:+.2f}, EBITDA={adj_e:+.2f}, PN={adj_pn:+.2f} → Ajuste={ajuste_tendencia:+.2f}", flush=True)
+
+    # --- CÁLCULO FINAL (Escala 0-10) ---
+    print(f"DEBUG SCORING [{metrics['otros'].get('Score NOSIS')}]: Liq={s_liq:.2f}, Sol={s_sol:.2f}, Rent={s_rent:.2f}, Age={s_age:.2f}, Nos={s_nos:.2f}, Tend={ajuste_tendencia:+.2f}", flush=True)
+    base_score = (s_liq * 0.30) + (s_sol * 0.25) + (s_rent * 0.20) + (s_age * 0.10) + (s_nos * 0.15)
+    final_score = max(0.0, min(10.0, base_score + ajuste_tendencia))
+
     # --- EVALUACIÓN DE HARD STOPS (No afectan el puntaje numérico) ---
     has_hard_stop = False
     hard_stop_reasons = []
@@ -305,30 +357,30 @@ def calculate_scoring(metrics: dict, prev_result: float = 0.0, prev_equity: floa
         has_hard_stop = True
         hard_stop_reasons.append("EBITDA negativo recurrente (Pérdida operativa sostenida)")
 
-    # 5. Score NOSIS menor a 200 (Se mantiene como criterio de integridad)
-    if 0 < nos < 200:
+    # 5. Score NOSIS menor a 2.0 (Se mantiene como criterio de integridad en escala 0-10)
+    if 0 < s_nos < 2.0:
         has_hard_stop = True
-        hard_stop_reasons.append("Score NOSIS por debajo del umbral mínimo de integridad (< 200)")
+        hard_stop_reasons.append("Score NOSIS por debajo del umbral mínimo de integridad (< 2.0)")
 
-    # 4. Liquidez Operativa Crítica (CT + FCO < 0)
+    # 4. Liquidez Operativa Crítica (CT + FGO < 0)
     ct = metrics['liquidez']['Capital de Trabajo']
-    fco = metrics.get('flujo_caja_operativo_raw', 0.0)
-    if (ct + fco) < 0:
+    fgo = metrics.get('flujo_de_caja', {}).get('Flujo Generado por Operaciones (FGO)', 0.0)
+    if (ct + fgo) < 0:
         has_hard_stop = True
-        hard_stop_reasons.append("Flujo Operativo + Capital de Trabajo negativo (Liquidez operativa crítica)")
+        hard_stop_reasons.append("Flujo Generado + Capital de Trabajo negativo (Liquidez operativa crítica)")
 
-    display_score = round(final_score, 1)
+    display_score = int(round(final_score, 0))
     label = "D"
     color = "#dc3545" # Rojo
     
     if not has_hard_stop:
-        if display_score >= 8.5: 
+        if final_score >= 8.5: 
             label = "A (Excelente)"
             color = "#198754"
-        elif display_score >= 7.0: 
+        elif final_score >= 7.0: 
             label = "B (Muy Bueno)"
             color = "#20c997"
-        elif display_score >= 5.0: 
+        elif final_score >= 5.0: 
             label = "C (Aceptable)"
             color = "#ffc107"
     else:
@@ -367,7 +419,8 @@ def calculate_scoring(metrics: dict, prev_result: float = 0.0, prev_equity: floa
         "rentabilidad": round(s_rent, 1),
         "antiguedad": round(s_age, 1),
         "nosis": round(s_nos, 1),
-        "total": display_score,
+        "ajuste_tendencia": round(ajuste_tendencia, 2),
+        "total": float(display_score),
         "cupo_sugerido": cupo_sugerido,
         "pn_actual": pn_actual,
         "multiplo": multiplo,
@@ -407,79 +460,79 @@ def tech_docs():
 def generate_description():
     data = request.get_json(silent=True) or {}
     razon_social = data.get("razon_social")
-    cuit = data.get("cuit")
-    sector = data.get("sector")
-    
-    api_key = os.environ.get("GOOGLE_API_KEY") 
-    
-    if not api_key:
-        return jsonify({"error": "No se encontró la GOOGLE_API_KEY en el archivo .env"}), 400
-    
+    cuit        = data.get("cuit") or "No informado"
+    sector      = data.get("sector") or "No informado"
+
     if not razon_social:
         return jsonify({"error": "Debe proporcionar la Razón Social de la empresa para buscar información."}), 400
 
     try:
-        # Inicializamos el modelo de Gemini
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-3-flash-preview",
-            google_api_key=api_key,
-            temperature=0.1,
-            tools=[{"google_search_retrieval": {}}]
+        from google import genai as google_genai
+        from google.genai import types as genai_types
+
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        client = google_genai.Client(api_key=api_key)
+
+        prompt_text = f"""Buscá en Google información real y verificable sobre la siguiente empresa argentina y redactá un perfil breve.
+
+EMPRESA:
+- Razón Social: {razon_social}
+- CUIT: {cuit}
+- Sector: {sector}
+
+CONTENIDO A INCLUIR (máximo 120 palabras):
+- Actividad principal y líneas de negocio
+- Antigüedad / año de fundación (si se encuentra)
+- Ubicación operativa
+- Grupo empresarial al que pertenece (si aplica)
+- Noticias relevantes: proyectos, obras, contratos (con fuente)
+- Alertas negativas si las hay: concursos preventivos, quiebras, inhibiciones, deudas fiscales, problemas judiciales (con fuente)
+
+REGLAS ESTRICTAS:
+- Solo incluir información encontrada mediante búsqueda web en este momento. No usar memoria de entrenamiento.
+- Si no encontrás información verificable sobre algún punto, simplemente omitilo. No inventar ni suponer datos.
+- Responder directamente con el contenido, sin frases introductorias.
+- Lenguaje directo y profesional."""
+
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt_text,
+            config=genai_types.GenerateContentConfig(
+                tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
+                temperature=0.1,
+            ),
         )
 
-        llm_with_search = llm.bind(
-            tool_config={
-                "function_calling_config": {
-                    "mode": "any",  # O usa "auto" para que el modelo decida cuándo buscar
-                }
-            }
-        )
+        text = response.text
+        sources = []
 
-        # Definimos el Prompt Template según lo solicitado
-        prompt = ChatPromptTemplate.from_template("""
-            Actúa como un Senior Risk Analyst especializado en Seguros de Caución. 
-            Tu objetivo es redactar un Perfil Operativo y de Riesgo detallado para la empresa
-
-            Empresa: {empresa}
-            CUIT: {cuit}
-            Sector Informado: {sector}
-
-            INSTRUCCIONES CRÍTICAS:
-            Para este análisis, utiliza tu capacidad de búsqueda web para investigar noticias de las últimas 4 semanas que afecten a su sector
-            1. UTILIZA GOOGLE SEARCH para buscar información actualizada sobre esta empresa (CUIT y Nombre), sitios financieros y noticias de Argentina.
-            2. Si NO tienes información específica y verificable de esta empresa, NO inventes datos (ubicación, socios, etc.). 
-            3. Mantén un tono estrictamente profesional y técnico.
-            4. Busca noticias recientes sobre problemas financieros, legales o de reputación que puedan afectar el análisis de riesgo crediticio.
-
-            Genera una descripción objetiva incluyendo:
-
-            - Actividad principal
-            - Grupo empresarial (si aplica)
-            - Ubicación donde opera principalmente o tiene sus plantas. 
-            - Noticias recientes sobre la empresa(si no hay info, indicar "Sin información pública reciente"). Proyectos, inversioes, problemas crediticios, concursos.
-
-            Formato:
-            - Máximo 120 palabras
-            - Lenguaje técnico
-            - Sin opiniones ni suposiciones
-            """)
-        
-        
-        from langchain_core.output_parsers import StrOutputParser
         try:
-            chain = prompt | llm_with_search | StrOutputParser()
-            response = chain.invoke({"empresa": razon_social, "cuit": cuit, "sector": sector})
-            
-            # Al usar StrOutputParser, 'response' ya es un string, no tiene atributo '.content'
-            if response:
-                return jsonify({"description": response})
-            return jsonify({"error": "La IA no devolvió contenido."}), 500
-            
-        except Exception as e:
-            return jsonify({"error": f"Error al invocar el modelo: {str(e)}"}), 500
+            candidate = response.candidates[0]
+            gm = getattr(candidate, 'grounding_metadata', None)
+            if gm:
+                seen = set()
+                for chunk in getattr(gm, 'grounding_chunks', []):
+                    web = getattr(chunk, 'web', None)
+                    if web:
+                        uri   = getattr(web, 'uri', '') or ''
+                        title = getattr(web, 'title', '') or uri
+                        if uri and uri not in seen:
+                            sources.append({"title": title, "url": uri})
+                            seen.add(uri)
+        except Exception as meta_err:
+            print(f"WARNING generate_description: no se pudo extraer fuentes: {meta_err}", flush=True)
+
+        if text:
+            grounding_used = len(sources) > 0
+            print(f"SUCCESS generate_description: {len(text)} chars, {len(sources)} fuentes. Grounding activo: {grounding_used}", flush=True)
+            if not grounding_used:
+                return jsonify({"error": "No se encontró información verificable en la web sobre esta empresa. No se generó descripción para evitar datos incorrectos."}), 404
+            return jsonify({"description": text, "sources": sources})
+        return jsonify({"error": "La IA no devolvió contenido."}), 500
 
     except Exception as e:
-        return jsonify({"error": f"Error de configuración: {str(e)}"}), 500
+        print(f"ERROR generate_description: {str(e)}", flush=True)
+        return jsonify({"error": f"Error al generar perfil: {str(e)}"}), 500
 
 
 @app.route("/generate_risk_analysis", methods=["POST"])
@@ -495,79 +548,152 @@ def generate_risk_analysis():
     balance = data.get("balance") or {}
     print(f"DEBUG IA PAYLOAD: Metrics={metrics.get('flujo_de_caja')}", flush=True)
     
-    api_key = os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
-        print("ERROR: GOOGLE_API_KEY no encontrada en el entorno.", flush=True)
-        return jsonify({"error": "No se encontró la GOOGLE_API_KEY en el entorno."}), 400
-
     razon_social = company.get('razon_social') or "Empresa Desconocida"
     print(f"DEBUG: Generando análisis para {razon_social}...", flush=True)
 
     try:
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-3-flash-preview",
-            google_api_key=api_key,
-            temperature=0.2
-        )
+        from google import genai as google_genai
+        from google.genai import types as genai_types
 
-        hard_stops_text = ", ".join(scoring.get("hard_stops", [])) if scoring.get("hard_stops") else "Sin disparadores de rechazo automático."
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        client = google_genai.Client(api_key=api_key)
 
-        prompt = ChatPromptTemplate.from_template("""
-            Actúa como un Senior Credit Risk Analyst de una calificadora de riesgo global (Moody's / FIX SCR). 
-            Tu tarea es redactar el apartado de "Informe de Riesgo y Conclusiones" basado en los datos financieros provistos.
+        hard_stops_text = ", ".join(scoring.get("hard_stops", [])) if scoring.get("hard_stops") else "Ninguno"
 
-            DATOS DE LA ENTIDAD:
-            Empresa: {razon_social} | Sector: {sector}
+        ventas         = balance.get('ventas') or 0
+        ebitda         = balance.get('ebitda') or 0
+        resultado_neto = balance.get('resultado_neto') or 0
+        patrimonio_neto = balance.get('patrimonio_neto') or 0
+        solvencia      = metrics.get('solvencia', {}).get('PN/Activos') or 0
+        liquidez       = metrics.get('liquidez', {}).get('Liquidez') or 0
+        apalancamiento = metrics.get('solvencia', {}).get('Deuda Financiera/EBITDA') or 0
+        roe            = metrics.get('rentabilidad', {}).get('ROE') or 0
+        fgo            = metrics.get('flujo_de_caja', {}).get('Flujo Generado por Operaciones (FGO)', 0)
+        variacion_wc   = metrics.get('flujo_de_caja', {}).get('Cambios en el WC', 0)
+        fco            = metrics.get('flujo_de_caja', {}).get('Flujo de Caja Operativo', 0)
+        score          = scoring.get('total') or 0
+        label          = scoring.get('label') or "D"
+        sector         = company.get('sector') or "N/A"
+        fecha_actual   = company.get('fecha_actual') or "período actual"
+        fecha_anterior = company.get('fecha_anterior') or "período anterior"
 
-            PERFIL FINANCIERO (ARS):
-            - Ventas: {ventas} | EBITDA: {ebitda} | Resultado Neto: {resultado_neto}
-            - Solvencia (PN/Activo): {solvencia}% | Liquidez Corriente: {liquidez}
-            - Apalancamiento (Deuda/EBITDA): {apalancamiento}x | ROE: {roe}%
-            - Flujo Generado (FGO): {fgo} | Var. Capital de Trabajo: {variacion_wc} | FCO: {fco}
+        # Datos del período anterior para análisis de evolución
+        balance_anterior  = data.get("balance_anterior") or {}
+        metrics_anterior  = data.get("metrics_anterior") or {}
+        prev_ventas       = balance_anterior.get('ventas') or 0
+        prev_ebitda       = balance_anterior.get('ebitda') or 0
+        prev_resultado_neto = balance_anterior.get('resultado_neto') or 0
+        prev_patrimonio_neto = balance_anterior.get('patrimonio_neto') or 0
+        prev_liquidez     = (metrics_anterior.get('liquidez') or {}).get('Liquidez') or 0
 
-            RATING DEL MODELO:
-            - Score: {score}/10 | Calificación: {label}
-            - Alertas Técnicas (Hard Stops): {hard_stops}
+        has_anterior = bool(prev_ventas or prev_ebitda or prev_patrimonio_neto)
 
-            REQUERIMIENTOS DEL INFORME:
-            1. Análisis descriptivo de la situación patrimonial y operativa.
-            2. Identificación explícita de Fortalezas y Debilidades.
-            3. Justificación técnica de los 'Hard Stops' (si existen) o de la calificación asignada, explicando el impacto en la capacidad de repago de deuda financiera y comercial.
-            
-            ESTILO:
-            - Lenguaje técnico-financiero formal y directo.
-            - Máximo 220 palabras.
-            - No incluyas saludos ni frases introductorias.
-        """)
-        
-        from langchain_core.output_parsers import StrOutputParser
-        chain = prompt | llm | StrOutputParser()
-        
-        invoke_data = {
-            "razon_social": razon_social,
-            "sector": company.get('sector') or "N/A",
-            "ventas": balance.get('ventas') or 0,
-            "ebitda": balance.get('ebitda') or 0,
-            "resultado_neto": balance.get('resultado_neto') or 0,
-            "solvencia": metrics.get('solvencia', {}).get('PN/Activos') or 0,
-            "liquidez": metrics.get('liquidez', {}).get('Liquidez') or 0,
-            "apalancamiento": metrics.get('solvencia', {}).get('Deuda Financiera/EBITDA') or 0,
-            "roe": metrics.get('rentabilidad', {}).get('ROE') or 0,
-            "fgo": metrics.get('flujo_de_caja', {}).get('Flujo Generado por Operaciones (FGO)', 0),
-            "variacion_wc": metrics.get('flujo_de_caja', {}).get('Cambios en el WC', 0),
-            "fco": metrics.get('flujo_de_caja', {}).get('Flujo de Caja Operativo', 0),
-            "score": scoring.get('total') or 0,
-            "label": scoring.get('label') or "D",
-            "hard_stops": hard_stops_text
-        }
+        def _var_pct(actual, anterior):
+            if not anterior or abs(anterior) < 1e-9:
+                return None
+            return ((actual - anterior) / abs(anterior)) * 100
+
+        if has_anterior:
+            vv = _var_pct(ventas, prev_ventas)
+            ve = _var_pct(ebitda, prev_ebitda)
+            vp = _var_pct(patrimonio_neto, prev_patrimonio_neto)
+            evol_lineas = []
+            if vv is not None:
+                evol_lineas.append(f"- Ventas: {'+' if vv >= 0 else ''}{vv:.1f}% (${prev_ventas:,.0f} → ${ventas:,.0f})")
+            if ve is not None:
+                evol_lineas.append(f"- EBITDA: {'+' if ve >= 0 else ''}{ve:.1f}% (${prev_ebitda:,.0f} → ${ebitda:,.0f})")
+            if vp is not None:
+                evol_lineas.append(f"- Patrimonio Neto: {'+' if vp >= 0 else ''}{vp:.1f}% (${prev_patrimonio_neto:,.0f} → ${patrimonio_neto:,.0f})")
+            if prev_liquidez:
+                evol_lineas.append(f"- Liquidez Corriente: {prev_liquidez:.2f}x → {liquidez:.2f}x")
+            evolucion_bloque = f"\nEvolución Interanual ({fecha_anterior} → {fecha_actual}):\n" + "\n".join(evol_lineas)
+            req_evolucion = "\n4. **Evolución Interanual:** Comenta sobre la variación en Ventas, EBITDA y Patrimonio Neto respecto al período anterior. Indica si la tendencia es positiva, negativa o estable y qué la explica."
+            req_conclusion_num = "5"
+        else:
+            evolucion_bloque = ""
+            req_evolucion = ""
+            req_conclusion_num = "4"
+
+        prompt_text = f"""Eres un Credit Risk Analyst de una agencia calificadora internacional (estándar Moody's/S&P). Redacta análisis de riesgo crediticio basado en datos financieros verificados.
+
+ENTIDAD Y CONTEXTO:
+- Empresa: {razon_social}
+- Sector: {sector}
+- Período: {fecha_actual}
+
+DATA FINANCIERA (en ARS):
+
+Resultados:
+- Ventas Netas: ${ventas:,.0f}
+- EBITDA: ${ebitda:,.0f}
+- Resultado Neto: ${resultado_neto:,.0f}
+
+Solvencia & Liquidez:
+- Patrimonio Neto / Activos: {solvencia}%
+- Liquidez Corriente: {liquidez}x
+- Apalancamiento (Deuda Financiera / EBITDA): {apalancamiento}x
+
+Rentabilidad:
+- ROE (Retorno Patrimonio): {roe}%
+
+Flujos de Caja:
+- Flujo Generado por Operaciones: ${fgo:,.0f}
+- Variación de Capital de Trabajo: ${variacion_wc:,.0f}
+- Flujo de Caja Operativo (FCO): ${fco:,.0f}
+{evolucion_bloque}
+RATING Y ALERTAS:
+- Score Modelo: {score}/10
+- Calificación: {label}
+- Disparadores Críticos (Hard Stops): {hard_stops_text}
+
+REQUERIMIENTOS:
+1. **Síntesis Patrimonial:** Describe la estructura de balance, solvencia y calidad de activos.
+2. **Análisis de Resultados:** Evalúa márgenes operativos, rentabilidad, tendencias.
+3. **Capacidad de Pago:** Analiza generación de flujos para repago de deudas financieras y comerciales.{req_evolucion}
+{req_conclusion_num}. **Conclusión:** Justifica la calificación asignada. Si existen Hard Stops, mencionalos.
+
+ESTILO:
+- Lenguaje técnico-financiero profesional
+- Máximo 250 palabras
+- Estructura en párrafos claros (no listas)
+- Sin saludos ni introducciones
+- Directo y fundamentado en datos
+- Evitar términos exagerados o hiperbólicos como "excepcionalmente", "sobresaliente", "extraordinario", "notable", "excelente", "impresionante" u otros superlativos no respaldados por los datos. Usar descripciones precisas y moderadas.
+- CRÍTICO: No incluyas ninguna afirmación sobre situación externa de la empresa (litigios, concursos, defaults, noticias) que no provenga de una búsqueda web verificable en este momento. Toda información externa debe tener fuente."""
 
         print(f"DEBUG: Payload para LLM preparado. Hard Stops: {len(scoring.get('hard_stops', []))}", flush=True)
 
-        response = chain.invoke(invoke_data)
-        
-        if response:
-            print(f"SUCCESS: Análisis generado ({len(response)} caracteres).", flush=True)
-            return jsonify({"analysis": response})
+        gen_response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt_text,
+            config=genai_types.GenerateContentConfig(
+                tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
+                temperature=0.2,
+            ),
+        )
+
+        text = gen_response.text
+        sources = []
+
+        try:
+            candidate = gen_response.candidates[0]
+            gm = getattr(candidate, 'grounding_metadata', None)
+            if gm:
+                seen = set()
+                for chunk in getattr(gm, 'grounding_chunks', []):
+                    web = getattr(chunk, 'web', None)
+                    if web:
+                        uri   = getattr(web, 'uri', '') or ''
+                        title = getattr(web, 'title', '') or uri
+                        if uri and uri not in seen:
+                            sources.append({"title": title, "url": uri})
+                            seen.add(uri)
+        except Exception as meta_err:
+            print(f"WARNING: No se pudo extraer fuentes del grounding: {meta_err}", flush=True)
+
+        if text:
+            print(f"SUCCESS: Análisis generado ({len(text)} chars). Fuentes: {len(sources)}.", flush=True)
+            return jsonify({"analysis": text, "sources": sources})
         else:
             print("WARNING: La IA devolvió una respuesta vacía.", flush=True)
             return jsonify({"error": "La IA no devolvió contenido."}), 500
@@ -741,32 +867,13 @@ def entry():
                 actual_balance.resultado_neto = parse_float(request.form.get("actual_resultado_neto", "0.0"))
                 actual_balance.flujo_caja_operativo = parse_float(request.form.get("actual_flujo_caja_operativo", "0.0"))
                 actual_balance.variacion_capital_trabajo = parse_float(request.form.get("actual_variacion_capital_trabajo", "0.0"))
-                actual_nosis = int(parse_float(request.form.get("actual_nosis_score", "0")))
-                print(f"DEBUG ENTRY: Actual FCO={actual_balance.flujo_caja_operativo}, VarWC={actual_balance.variacion_capital_trabajo}", flush=True)
-                if actual_nosis > 999:
-                    raise ValueError("El Score NOSIS actual no puede superar los 999 puntos.")
+                actual_nosis = parse_float(request.form.get("actual_nosis_score", "0"))
+                if actual_nosis > 1000.0:
+                    raise ValueError("El Score NOSIS actual no puede superar los 1000 puntos.")
                 actual_balance.nosis_score = actual_nosis
                 actual_balance.capex = parse_float(request.form.get("actual_capex", "0.0"))
                 actual_balance.dividendos = parse_float(request.form.get("actual_dividendos", "0.0"))
                 actual_balance.analisis = request.form.get("actual_analisis", "")
-                
-                # Persistir Scoring para ML
-                m_act = compute_metrics(actual_balance)
-                res_ant = comparativo_balance.resultado_neto if comparativo_balance else 0.0
-                eb_ant = comparativo_balance.ebitda if comparativo_balance else 0.0
-                ebit_ant = comparativo_balance.resultado_operativo if comparativo_balance else 0.0
-                m_comp_temp = compute_metrics(comparativo_balance) if comparativo_balance else {}
-                pn_ant = m_comp_temp.get('patrimonio_neto')
-                sc_act = calculate_scoring(m_act, res_ant, pn_ant, eb_ant, ebit_ant)
-                actual_balance.score_solvencia = sc_act['solvencia']
-                actual_balance.score_liquidez = sc_act['liquidez']
-                actual_balance.score_rentabilidad = sc_act['rentabilidad']
-                actual_balance.score_antiguedad = sc_act['antiguedad']
-                actual_balance.score_nosis = sc_act['nosis']
-                actual_balance.score_total = sc_act['total']
-                actual_balance.score_label = sc_act['label']
-                actual_balance.cupo_sugerido = sc_act['cupo_sugerido']
-                actual_balance.multiplo_sugerido = sc_act['multiplo']
                 session.add(actual_balance)
 
             if comp_date:
@@ -792,13 +899,13 @@ def entry():
                 comparativo_balance.flujo_caja_operativo = parse_float(request.form.get("comparativo_flujo_caja_operativo", "0.0"))
                 comparativo_balance.variacion_capital_trabajo = parse_float(request.form.get("comparativo_variacion_capital_trabajo", "0.0"))
                 print(f"DEBUG ENTRY: Comparativo FCO={comparativo_balance.flujo_caja_operativo}, VarWC={comparativo_balance.variacion_capital_trabajo}", flush=True)
-                comp_nosis = int(parse_float(request.form.get("comparativo_nosis_score", "0")))
-                if comp_nosis > 999:
-                    raise ValueError("El Score NOSIS comparativo no puede superar los 999 puntos.")
+                comp_nosis = parse_float(request.form.get("comparativo_nosis_score", "0"))
+                if comp_nosis > 1000.0:
+                    raise ValueError("El Score NOSIS comparativo no puede superar los 1000 puntos.")
                 comparativo_balance.nosis_score = comp_nosis
                 comparativo_balance.capex = parse_float(request.form.get("comparativo_capex", "0.0"))
                 comparativo_balance.dividendos = parse_float(request.form.get("comparativo_dividendos", "0.0"))
-                
+
                 m_comp = compute_metrics(comparativo_balance)
                 sc_comp = calculate_scoring(m_comp)
                 comparativo_balance.score_solvencia = sc_comp['solvencia']
@@ -811,6 +918,27 @@ def entry():
                 comparativo_balance.cupo_sugerido = sc_comp['cupo_sugerido']
                 comparativo_balance.multiplo_sugerido = sc_comp['multiplo']
                 session.add(comparativo_balance)
+
+            # Re-calcular y persistir el scoring del balance actual AHORA que el comparativo está actualizado
+            if actual_balance:
+                m_act = compute_metrics(actual_balance)
+                res_ant = comparativo_balance.resultado_neto if comparativo_balance else 0.0
+                eb_ant = comparativo_balance.ebitda if comparativo_balance else 0.0
+                ebit_ant = comparativo_balance.resultado_operativo if comparativo_balance else 0.0
+                m_comp_temp = compute_metrics(comparativo_balance) if comparativo_balance else {}
+                pn_ant = m_comp_temp.get('patrimonio_neto')
+                ven_ant = comparativo_balance.ventas if comparativo_balance else 0.0
+
+                sc_act = calculate_scoring(m_act, res_ant, pn_ant, eb_ant, ebit_ant, ven_ant)
+                actual_balance.score_solvencia = sc_act['solvencia']
+                actual_balance.score_liquidez = sc_act['liquidez']
+                actual_balance.score_rentabilidad = sc_act['rentabilidad']
+                actual_balance.score_antiguedad = sc_act['antiguedad']
+                actual_balance.score_nosis = sc_act['nosis']
+                actual_balance.score_total = sc_act['total']
+                actual_balance.score_label = sc_act['label']
+                actual_balance.cupo_sugerido = sc_act['cupo_sugerido']
+                actual_balance.multiplo_sugerido = sc_act['multiplo']
 
             session.commit()
             # Después del commit, refrescar los objetos de balance para asegurar que reflejan el último estado de la DB
@@ -863,17 +991,27 @@ def entry():
     # SOLUCIÓN: Recalcular SIEMPRE antes de renderizar (Stateless View).
     # Esto ignora los valores persistidos stale y usa la lógica actual del código.
     if actual_balance:
-        prev_b = session.query(EECCDB).filter(
-            EECCDB.empresa_id == selected_company.id, 
-            EECCDB.fecha_balance < actual_balance.fecha_balance
-        ).order_by(EECCDB.fecha_balance.desc()).first()
-        
-        prev_res = prev_b.resultado_neto if prev_b else 0.0
-        prev_eb = prev_b.ebitda if prev_b else 0.0
-        prev_ebit_val = prev_b.resultado_operativo if prev_b else 0.0
-        prev_eq = compute_metrics(prev_b).get('patrimonio_neto') if prev_b else None
-        
-        actual_scoring = calculate_scoring(actual_metrics, prev_res, prev_eq, prev_eb, prev_ebit_val)
+        # Priorizar el balance comparativo presente en pantalla para el cálculo del score actual
+        if comparativo_balance and (actual_balance is not comparativo_balance):
+            p_res = comparativo_balance.resultado_neto
+            p_eb = comparativo_balance.ebitda
+            p_ebit = comparativo_balance.resultado_operativo
+            p_eq = comparativo_metrics.get('patrimonio_neto')
+            p_ven = comparativo_balance.ventas
+        else:
+            # Si no hay comparativo en pantalla, buscar en DB
+            prev_b = session.query(EECCDB).filter(
+                EECCDB.empresa_id == selected_company.id,
+                EECCDB.fecha_balance < actual_balance.fecha_balance
+            ).order_by(EECCDB.fecha_balance.desc()).first()
+
+            p_res = prev_b.resultado_neto if prev_b else 0.0
+            p_eb = prev_b.ebitda if prev_b else 0.0
+            p_ebit = prev_b.resultado_operativo if prev_b else 0.0
+            p_eq = compute_metrics(prev_b).get('patrimonio_neto') if prev_b else None
+            p_ven = prev_b.ventas if prev_b else 0.0
+
+        actual_scoring = calculate_scoring(actual_metrics, p_res, p_eq, p_eb, p_ebit, p_ven)
     else:
         actual_scoring = {}
 

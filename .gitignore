@@ -12,3 +12,7 @@ env/
 # Archivos de Python
 __pycache__/
 *.py[cod]
+
+# Artefactos de compilación PyInstaller
+build/
+dist/

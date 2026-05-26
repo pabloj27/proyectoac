@@ -43,7 +43,7 @@ class EECCDB(Base):
     ebitda = Column(Float, default=0.0)
     resultado_neto = Column(Float, default=0.0)
     flujo_caja_operativo = Column(Float, default=0.0)
-    nosis_score = Column(Integer, default=0)
+    nosis_score = Column(Float, default=0.0)
     variacion_capital_trabajo = Column(Float, default=0.0)
     capex = Column(Float, default=0.0)
     dividendos = Column(Float, default=0.0)
@@ -144,7 +144,7 @@ def _ensure_sqlite_schema(engine):
                     'pasivo_no_corriente': 'FLOAT',
                     'deuda_financiera': 'FLOAT',
                     'ebitda': 'FLOAT',
-                    'nosis_score': 'INTEGER',
+                    'nosis_score': 'FLOAT',
                     'ventas': 'FLOAT',
                     'resultado_operativo': 'FLOAT',
                     'resultado_neto': 'FLOAT',
